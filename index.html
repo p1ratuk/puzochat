@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DepoChat - Гетто-мессенджер</title>
+    <title>PuzoChat - Гетто-мессенджер</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <div class="app">
-        <!-- Сайдбар с чатами -->
+        <!-- Сайдбар -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h2>DepoChat</h2>
+                <h2>💬 PuzoChat</h2>
                 <span class="online-count" id="online-count">0 онлайн</span>
             </div>
             <div class="search">
@@ -24,6 +24,7 @@
                     <span id="current-user-badge"></span>
                     <span id="current-user-name">Не вошёл</span>
                 </div>
+                <button onclick="showCreateMenu()" title="Создать">➕</button>
                 <button onclick="logout()">🚪</button>
             </div>
         </div>
@@ -37,6 +38,7 @@
                     <div class="chat-status" id="chat-status"></div>
                 </div>
                 <div class="chat-actions">
+                    <button onclick="editCurrentChat()" title="Редактировать">⚙️</button>
                     <button onclick="searchMessages()">🔍</button>
                     <button onclick="toggleSidebar()">📋</button>
                 </div>
@@ -44,8 +46,8 @@
             
             <div class="messages" id="messages">
                 <div class="welcome-screen">
-                    <h1>💬 DepoChat</h1>
-                    <p>Выберите чат или начните новый!</p>
+                    <h1>💬 PuzoChat</h1>
+                    <p>Выберите чат или создайте новый!</p>
                 </div>
             </div>
             
@@ -59,7 +61,7 @@
     <!-- Окно регистрации -->
     <div class="modal" id="auth-modal">
         <div class="modal-content">
-            <h2>🚀 Вход в DepoChat</h2>
+            <h2>🚀 Вход в PuzoChat</h2>
             <input type="text" id="reg-username" placeholder="Юзернейм">
             <input type="password" id="reg-password" placeholder="Пароль">
             <button onclick="login()">Войти</button>
@@ -79,10 +81,29 @@
                     <p id="profile-bio"></p>
                     <p>💰 Баланс: <span id="profile-balance">0</span></p>
                 </div>
-                <button onclick="openDM(profileUsername)">✉️ Написать</button>
             </div>
-            <div class="profile-wall" id="profile-wall"></div>
+            <div id="profile-actions"></div>
             <button onclick="closeProfile()">Закрыть</button>
+        </div>
+    </div>
+    
+    <!-- Окно создания -->
+    <div class="modal" id="create-modal" style="display:none;">
+        <div class="modal-content">
+            <h2>➕ Создать</h2>
+            <button onclick="createChannel()">📢 Создать канал</button>
+            <button onclick="createGroupChat()">👥 Создать групповой чат</button>
+            <button onclick="startDM()">✉️ Написать юзеру</button>
+            <button onclick="closeCreateMenu()">Закрыть</button>
+        </div>
+    </div>
+    
+    <!-- Окно редактирования -->
+    <div class="modal" id="edit-modal" style="display:none;">
+        <div class="modal-content">
+            <h2 id="edit-title">✏️ Редактировать</h2>
+            <div id="edit-content"></div>
+            <button onclick="closeEditModal()">Закрыть</button>
         </div>
     </div>
     
