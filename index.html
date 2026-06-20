@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DepoChat - Гетто-мессенджер</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="app">
+        <!-- Сайдбар с чатами -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>DepoChat</h2>
+                <span class="online-count" id="online-count">0 онлайн</span>
+            </div>
+            <div class="search">
+                <input type="text" placeholder="🔍 Поиск..." id="search-input" oninput="handleSearch(this.value)">
+            </div>
+            <div class="chat-list" id="chat-list"></div>
+            <div class="sidebar-footer">
+                <div class="user-info" onclick="openProfile(currentUser?.username)">
+                    <span id="current-user-badge"></span>
+                    <span id="current-user-name">Не вошёл</span>
+                </div>
+                <button onclick="logout()">🚪</button>
+            </div>
+        </div>
+        
+        <!-- Основной чат -->
+        <div class="chat-main" id="chat-main">
+            <div class="chat-header" id="chat-header">
+                <div class="avatar" id="chat-avatar">💬</div>
+                <div class="chat-info">
+                    <div class="chat-name" id="chat-name">Выберите чат</div>
+                    <div class="chat-status" id="chat-status"></div>
+                </div>
+                <div class="chat-actions">
+                    <button onclick="searchMessages()">🔍</button>
+                    <button onclick="toggleSidebar()">📋</button>
+                </div>
+            </div>
+            
+            <div class="messages" id="messages">
+                <div class="welcome-screen">
+                    <h1>💬 DepoChat</h1>
+                    <p>Выберите чат или начните новый!</p>
+                </div>
+            </div>
+            
+            <div class="input-area" id="input-area" style="display:none;">
+                <input type="text" id="message-input" placeholder="Сообщение..." onkeypress="if(event.key==='Enter')sendMessage()">
+                <button onclick="sendMessage()">📤</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Окно регистрации -->
+    <div class="modal" id="auth-modal">
+        <div class="modal-content">
+            <h2>🚀 Вход в DepoChat</h2>
+            <input type="text" id="reg-username" placeholder="Юзернейм">
+            <input type="password" id="reg-password" placeholder="Пароль">
+            <button onclick="login()">Войти</button>
+            <button onclick="register()">Регистрация</button>
+            <p class="hint">После регистрации ты получишь чат с поддержкой и канал с новостями!</p>
+        </div>
+    </div>
+    
+    <!-- Окно профиля -->
+    <div class="modal" id="profile-modal" style="display:none;">
+        <div class="modal-content">
+            <div class="profile-header">
+                <div class="avatar" id="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <h2 id="profile-name"></h2>
+                    <span id="profile-badge"></span>
+                    <p id="profile-bio"></p>
+                    <p>💰 Баланс: <span id="profile-balance">0</span></p>
+                </div>
+                <button onclick="openDM(profileUsername)">✉️ Написать</button>
+            </div>
+            <div class="profile-wall" id="profile-wall"></div>
+            <button onclick="closeProfile()">Закрыть</button>
+        </div>
+    </div>
+    
+    <!-- Окно поиска -->
+    <div class="modal" id="search-modal" style="display:none;">
+        <div class="modal-content">
+            <h2>🔍 Результаты поиска</h2>
+            <div id="search-results"></div>
+            <button onclick="closeSearch()">Закрыть</button>
+        </div>
+    </div>
+    
+    <!-- Окно админки (только для plexo) -->
+    <div class="modal" id="admin-modal" style="display:none;">
+        <div class="modal-content">
+            <h2>👑 Админ-панель</h2>
+            <div id="admin-content"></div>
+            <button onclick="closeAdmin()">Закрыть</button>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
