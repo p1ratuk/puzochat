@@ -6,10 +6,7 @@ body {
     height: 100vh;
     overflow: hidden;
 }
-.app {
-    display: flex;
-    height: 100vh;
-}
+.app { display: flex; height: 100vh; }
 .sidebar {
     width: 350px;
     background: #141619;
@@ -118,10 +115,7 @@ body {
     align-self: flex-end;
     border-bottom-right-radius: 5px;
 }
-.message .username {
-    font-weight: 700;
-    margin-right: 5px;
-}
+.message .username { font-weight: 700; margin-right: 5px; }
 .message .badge {
     font-size: 11px;
     padding: 2px 6px;
@@ -181,7 +175,7 @@ body {
     overflow-y: auto;
 }
 .modal-content h2 { color: #ffd700; margin-bottom: 20px; }
-.modal-content input {
+.modal-content input, .modal-content textarea {
     width: 100%;
     padding: 12px;
     margin-bottom: 10px;
@@ -191,6 +185,7 @@ body {
     color: #fff;
     outline: none;
 }
+.modal-content textarea { resize: vertical; min-height: 100px; }
 .modal-content button {
     width: 100%;
     padding: 12px;
@@ -204,6 +199,7 @@ body {
     font-size: 16px;
 }
 .modal-content button:hover { background: #00ff66; }
+.modal-content button.danger { background: #ff0000; color: #fff; }
 .hint { color: #888; font-size: 12px; text-align: center; margin-top: 10px; }
 .profile-header {
     display: flex;
@@ -212,36 +208,19 @@ body {
     align-items: center;
 }
 .profile-header .avatar { font-size: 60px; }
-.profile-info h2 { margin: 0; }
-.profile-wall { margin-top: 20px; }
-.post {
-    background: #1a1f2e;
-    padding: 15px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-}
-.post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.post-content { margin-bottom: 10px; }
-.post-actions { display: flex; gap: 15px; }
-.post-actions button {
-    background: none;
-    border: none;
-    color: #888;
-    cursor: pointer;
-    font-size: 13px;
-}
-.comment {
-    padding: 8px;
-    margin-left: 20px;
-    border-left: 2px solid #333;
-    margin-top: 5px;
-}
 .search-item {
     padding: 10px;
     cursor: pointer;
     border-bottom: 1px solid #1f2326;
 }
 .search-item:hover { background: #1a1f2e; }
+.signature-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+    margin: 0 3px;
+}
 @media (max-width: 768px) {
     .sidebar { width: 100%; position: absolute; z-index: 100; height: 100%; display: none; }
     .sidebar.show { display: flex; }
