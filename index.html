@@ -621,6 +621,17 @@
             margin-top: 3px;
             text-align: center;
         }
+        .reconnect-indicator {
+            font-size: 0.7em;
+            color: #ffaa00;
+            text-align: center;
+            padding: 5px;
+            display: none;
+        }
+        .reconnect-indicator.active {
+            display: block;
+            animation: pulse 1.5s infinite;
+        }
         @media (max-width: 768px) {
             body {
                 flex-direction: column;
@@ -690,6 +701,8 @@
     <div id="status" style="color: #ff3333; font-weight: bold; font-size: 0.85em; word-break: break-all;">
         Ожидание...
     </div>
+    
+    <div class="reconnect-indicator" id="reconnect-indicator">🔄 Переподключение...</div>
     
     <div class="peers-box">
         <div id="peers-count" style="font-weight: bold; margin-bottom: 4px; color: #ffffff;">👥 Участников: 1</div>
@@ -761,6 +774,48 @@
 </div>
 
 <script>
+    // ============ КОНФИГУРАЦИЯ ============
+    const PEERJS_CONFIG = {
+        host: '0.peerjs.com',
+        port: 443,
+        secure: true,
+        path: '/',
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ],
+            iceCandidatePoolSize: 4,
+            iceTransportPolicy: 'all',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+        },
+        pingInterval: 5000,
+        debug: 2
+    };
+
+    const MAX_RECONNECT_ATTEMPTS = 10;
+    const RECONNECT_DELAY_BASE = 2000;
+    const CONNECTION_TIMEOUT = 15000;
+
     // ============ Утилиты ============
     const avatars = [
         '🐱', '🐶', '🦊', '🐸', '🐵', '🐼', '🐨', '🐯',
@@ -783,7 +838,8 @@
         
         if (availableAvatars.length === 0) {
             const extraEmojis = ['😀', '😎', '🤖', '👻', '🎃', '🤡', '👽', '💀', '🤠', '👾',
-                                 '🐲', '🦖', '🦕', '🐙', '🦑', '🦀', '🦞', '🐡', '🐬', '🦈'];
+                                 '🐲', '🦖', '🦕', '🐙', '🦑', '🦀', '🦞', '🐡', '🐬', '🦈',
+                                 '🦚', '🦜', '🦢', '🦩', '🐉', '🦥', '🐋', '🦭', '🐊', '🦎'];
             const randomEmoji = extraEmojis[Math.floor(Math.random() * extraEmojis.length)];
             usedAvatars.add(randomEmoji);
             return randomEmoji;
@@ -795,7 +851,7 @@
     }
     
     function releaseAvatar(avatar) {
-        if (avatar && avatars.includes(avatar)) {
+        if (avatar && (avatars.includes(avatar) || true)) {
             usedAvatars.delete(avatar);
         }
     }
@@ -817,19 +873,19 @@
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-        return `rm_${prefix}_${hashHex}`;
+        return `p2p_${prefix}_${hashHex}`;
     }
 
     function isMobile() {
         return /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
     }
 
-    // ============ Хранилище истории (localStorage) ============
-    const HISTORY_KEY_PREFIX = 'p2p_room_history_v2_';
-    const LOGS_KEY_PREFIX = 'p2p_room_logs_v2_';
-    const BANS_KEY_PREFIX = 'p2p_room_bans_v2_';
-    const BAN_WORDS_KEY_PREFIX = 'p2p_ban_words_v2_';
-    const DM_HISTORY_KEY_PREFIX = 'p2p_dm_history_v2_';
+    // ============ Хранилище ============
+    const HISTORY_KEY_PREFIX = 'p2p_room_history_v3_';
+    const LOGS_KEY_PREFIX = 'p2p_room_logs_v3_';
+    const BANS_KEY_PREFIX = 'p2p_room_bans_v3_';
+    const BAN_WORDS_KEY_PREFIX = 'p2p_ban_words_v3_';
+    const DM_HISTORY_KEY_PREFIX = 'p2p_dm_history_v3_';
     const MAX_HISTORY_ITEMS = 1000;
     const MAX_LOG_ITEMS = 500;
     const DM_HISTORY_DAYS = 3;
@@ -894,7 +950,6 @@
             messageData.timestamp = Date.now();
             history.push(messageData);
             
-            // Очистка старых сообщений (старше 3 дней)
             const cutoff = Date.now() - (DM_HISTORY_DAYS * 24 * 60 * 60 * 1000);
             history = history.filter(msg => msg.timestamp > cutoff);
             
@@ -1124,6 +1179,7 @@
     const joinRoomBtn = document.getElementById('join-room-btn');
     const roomDisplay = document.getElementById('room-display');
     const statusDisplay = document.getElementById('status');
+    const reconnectIndicator = document.getElementById('reconnect-indicator');
     const peersCount = document.getElementById('peers-count');
     const peersList = document.getElementById('peers-list');
     const chatWindow = document.getElementById('chat-window');
@@ -1189,19 +1245,29 @@
     let voiceActivityTimers = new Map();
     let voiceAnalysers = new Map();
     let messageStatuses = new Map();
+    let reconnectAttempts = 0;
+    let reconnectTimer = null;
+    let connectionTimeout = null;
+    let peerDestroyed = false;
 
     // ============ Аудио контекст ============
     function ensureAudio() {
         if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch(e) {
+                console.error('Ошибка создания AudioContext:', e);
+                return;
+            }
         }
         if (audioContext.state === 'suspended') {
-            audioContext.resume();
+            audioContext.resume().catch(e => console.warn('Не удалось возобновить AudioContext:', e));
         }
     }
 
-    document.addEventListener('click', ensureAudio);
-    document.addEventListener('touchstart', ensureAudio);
+    document.addEventListener('click', ensureAudio, { once: true });
+    document.addEventListener('touchstart', ensureAudio, { once: true });
+    document.addEventListener('keydown', ensureAudio, { once: true });
 
     // ============ Микрофон ============
     async function getMicrophone() {
@@ -1210,25 +1276,30 @@
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true
+                    autoGainControl: true,
+                    sampleRate: 48000,
+                    channelCount: 1
                 }, 
                 video: false 
             });
             
             ensureAudio();
-            const source = audioContext.createMediaStreamSource(rawStream);
-            gainNode = audioContext.createGain();
-            source.connect(gainNode);
-            
-            localAudioStream = rawStream;
-            
-            // Настройка Voice Activity Detection
-            setupLocalVoiceActivityDetection(rawStream);
-            
-            statusDisplay.innerText = '🎤 Микрофон готов';
-            debug('Микрофон успешно активирован');
-            logToHistory('system', 'Микрофон успешно активирован');
-            return true;
+            if (audioContext) {
+                const source = audioContext.createMediaStreamSource(rawStream);
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = parseFloat(myVolSlider.value) / 100;
+                source.connect(gainNode);
+                
+                localAudioStream = rawStream;
+                
+                setupLocalVoiceActivityDetection(rawStream);
+                
+                statusDisplay.innerText = '🎤 Микрофон готов';
+                debug('Микрофон успешно активирован');
+                logToHistory('system', 'Микрофон успешно активирован');
+                return true;
+            }
+            return false;
         } catch (err) {
             console.warn('Микрофон не доступен:', err);
             statusDisplay.innerText = '⚠️ Без микрофона';
@@ -1253,9 +1324,13 @@
             let isCurrentlySpeaking = false;
             
             function checkSpeaking() {
+                if (!audioContext || audioContext.state === 'closed') return;
                 if (isMuted) {
-                    isCurrentlySpeaking = false;
-                    updateMySpeakingIndicator(false);
+                    if (isCurrentlySpeaking) {
+                        isCurrentlySpeaking = false;
+                        updateMySpeakingIndicator(false);
+                        broadcastVoiceActivity(false);
+                    }
                     requestAnimationFrame(checkSpeaking);
                     return;
                 }
@@ -1297,7 +1372,6 @@
             }
         });
         
-        // Обновляем аватар в сообщениях
         const myMessages = document.querySelectorAll('.msg.me .avatar');
         myMessages.forEach(avatar => {
             if (speaking) {
@@ -1342,19 +1416,25 @@
     function broadcastVoiceActivity(speaking) {
         dataConnections.forEach(conn => {
             if (conn.open) {
-                conn.send({
-                    type: 'voice_activity',
-                    speaking: speaking,
-                    from: myPeerId,
-                    timestamp: Date.now()
-                });
+                try {
+                    conn.send({
+                        type: 'voice_activity',
+                        speaking: speaking,
+                        from: myPeerId,
+                        timestamp: Date.now()
+                    });
+                } catch(e) {
+                    console.warn('Ошибка отправки voice activity:', e);
+                }
             }
         });
     }
 
     function debug(msg) {
         console.log('[DEBUG]', msg);
-        debugInfo.innerText = msg;
+        if (debugInfo) {
+            debugInfo.innerText = msg;
+        }
         if (currentRoomName && amIHost) {
             saveLogToHistory(currentRoomName, {
                 type: 'debug',
@@ -1421,7 +1501,6 @@
         saveBanList(currentRoomName, bannedPeers);
         updateBanListUI();
         
-        // Закрываем соединения с забаненным
         closePeerConnections(peerId);
         
         logModeration(peerId, 'BAN', reason);
@@ -1441,7 +1520,6 @@
         updatePeersUI();
         logModeration(peerId, 'MUTE', 'Замучен');
         
-        // Отключаем аудио от замученного
         const audioCall = mediaCalls.find(c => c.peer === peerId);
         if (audioCall) {
             const audioElem = document.getElementById('audio-' + peerId.substring(0, 8));
@@ -1455,9 +1533,11 @@
         mutedPeers.delete(peerId);
         updatePeersUI();
         
-        const audioElem = document.getElementById('audio-' + peerId.substring(0, 8));
-        if (audioElem) {
-            audioElem.muted = false;
+        if (!isDeafened) {
+            const audioElem = document.getElementById('audio-' + peerId.substring(0, 8));
+            if (audioElem) {
+                audioElem.muted = false;
+            }
         }
     }
 
@@ -1472,6 +1552,8 @@
         if (audioCall) {
             try { audioCall.close(); } catch(e) {}
             mediaCalls = mediaCalls.filter(c => c.peer !== peerId);
+            const audioElem = document.getElementById('audio-' + peerId.substring(0, 8));
+            if (audioElem) audioElem.remove();
         }
         
         const videoCall = videoCalls.find(c => c.peer === peerId);
@@ -1486,13 +1568,17 @@
     function broadcastBanAction(peerId, action, reason) {
         dataConnections.forEach(conn => {
             if (conn.open) {
-                conn.send({
-                    type: 'ban_action',
-                    peerId: peerId,
-                    action: action,
-                    reason: reason,
-                    from: myPeerId
-                });
+                try {
+                    conn.send({
+                        type: 'ban_action',
+                        peerId: peerId,
+                        action: action,
+                        reason: reason,
+                        from: myPeerId
+                    });
+                } catch(e) {
+                    console.warn('Ошибка отправки ban action:', e);
+                }
             }
         });
     }
@@ -1504,11 +1590,15 @@
             banListContainer.innerHTML = bannedPeers.map(b => `
                 <div class="ban-list-item">
                     <span>🚫 ${b.peerId.substring(0, 8)}...</span>
-                    <button class="btn-unban" onclick="unbanPeer('${b.peerId}')" style="font-size:0.65em;padding:2px 6px;">Разбан</button>
+                    <button class="btn-unban" onclick="window.unbanPeerDirect('${b.peerId}')" style="font-size:0.65em;padding:2px 6px;">Разбан</button>
                 </div>
             `).join('');
         }
     }
+
+    window.unbanPeerDirect = function(peerId) {
+        unbanPeer(peerId);
+    };
 
     // ============ Экран ============
     async function startScreenShare() {
@@ -1753,11 +1843,15 @@
         
         dataConnections.forEach(conn => {
             if (conn.open) {
-                conn.send({
-                    type: 'mute_status',
-                    muted: isMuted,
-                    from: myPeerId
-                });
+                try {
+                    conn.send({
+                        type: 'mute_status',
+                        muted: isMuted,
+                        from: myPeerId
+                    });
+                } catch(e) {
+                    console.warn('Ошибка отправки mute status:', e);
+                }
             }
         });
         
@@ -1800,17 +1894,23 @@
 
     // ============ Видео-звонки ============
     function broadcastVideo(stream, type) {
+        if (!peer || !peer.id) return;
+        
         dataConnections.forEach(conn => {
             const exists = videoCalls.find(c => c.peer === conn.peer);
-            if (!exists && peer) {
-                const call = peer.call(conn.peer, stream);
-                setupVideoCall(call, conn.peer, type);
+            if (!exists) {
+                try {
+                    const call = peer.call(conn.peer, stream);
+                    setupVideoCall(call, conn.peer, type);
+                } catch(e) {
+                    console.warn('Ошибка видеозвонка:', e);
+                }
             }
         });
     }
 
     function setupVideoCall(call, peerId, type) {
-        videoCalls.push(call);
+        videoCalls.push({ call: call, peer: peerId, type: type });
         const peerShort = peerId.substring(0, 8);
         debug(`Видео-звонок (${type}) установлен с: ${peerShort}`);
         
@@ -1824,12 +1924,13 @@
             const errMsg = `Ошибка видео-звонка: ${err.message}`;
             debug(errMsg);
             logToHistory('error', errMsg);
+            videoCalls = videoCalls.filter(c => c.peer !== peerId);
         });
     }
 
     function closeAllVideoCalls() {
-        videoCalls.forEach(call => {
-            try { call.close(); } catch(e) {}
+        videoCalls.forEach(vc => {
+            try { vc.call.close(); } catch(e) {}
         });
         videoCalls = [];
         updatePeersUI();
@@ -1896,7 +1997,6 @@
         });
         peersList.innerHTML = html;
         
-        // Добавляем контекстное меню для пиров
         document.querySelectorAll('.peer-item').forEach(item => {
             item.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -1972,9 +2072,13 @@
             
             const conn = dataConnections.find(c => c.peer === peerId);
             if (conn && conn.open) {
-                conn.send(dmData);
-                saveDMHistory(myPeerId, peerId, dmData);
-                addSystemMessage(`💌 ЛС отправлено ${peerId.substring(0, 8)}...`);
+                try {
+                    conn.send(dmData);
+                    saveDMHistory(myPeerId, peerId, dmData);
+                    addSystemMessage(`💌 ЛС отправлено ${peerId.substring(0, 8)}...`);
+                } catch(e) {
+                    addErrorMessage('❌ Ошибка отправки ЛС');
+                }
             } else {
                 addErrorMessage('❌ Пользователь не в сети для ЛС');
             }
@@ -2060,7 +2164,6 @@
         chatWindow.appendChild(msgDiv);
         chatWindow.scrollTop = chatWindow.scrollHeight;
         
-        // Обработчики для кнопок действий
         const actionBtns = msgDiv.querySelectorAll('.msg-action-btn');
         actionBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -2071,24 +2174,30 @@
                 if (action === 'copy') {
                     navigator.clipboard.writeText(text).then(() => {
                         addSystemMessage('📋 Текст скопирован', true);
+                    }).catch(() => {
+                        addErrorMessage('❌ Не удалось скопировать', true);
                     });
                 } else if (action === 'delete') {
                     if (confirm('Удалить это сообщение?')) {
                         if (msgId) {
                             deleteMessageFromHistory(currentRoomName, msgId);
-                            // Отправляем уведомление об удалении
                             dataConnections.forEach(conn => {
                                 if (conn.open) {
-                                    conn.send({
-                                        type: 'message_deleted',
-                                        messageId: msgId,
-                                        from: myPeerId
-                                    });
+                                    try {
+                                        conn.send({
+                                            type: 'message_deleted',
+                                            messageId: msgId,
+                                            from: myPeerId
+                                        });
+                                    } catch(e) {}
                                 }
                             });
                         }
                         msgDiv.classList.add('deleted');
-                        msgDiv.querySelector('.msg-content').innerHTML += ' <em>(удалено)</em>';
+                        const contentDiv = msgDiv.querySelector('.msg-content div:first-child');
+                        if (contentDiv) {
+                            contentDiv.innerHTML += ' <em>(удалено)</em>';
+                        }
                     }
                 }
             });
@@ -2118,15 +2227,13 @@
         const text = msgInput.value.trim();
         if (!text) return;
         
-        // Проверка бан-слов
         const bannedWord = checkBanWords(text);
         if (bannedWord && amIHost) {
             addSystemMessage(`⚠️ Сообщение содержит запрещённое слово: "${bannedWord}"`, true);
             logModeration(myPeerId, 'BAN_WORD_DETECTED', `Слово: ${bannedWord}`);
             
-            // Уведомляем админа (хоста) о нарушении
             if (moderationEnabled) {
-                addErrorMessage(`🛡️ [МОДЕРАЦИЯ] Обнаружено бан-слово: "${bannedWord}" в сообщении`, true);
+                addErrorMessage(`🛡️ [МОДЕРАЦИЯ] Обнаружено бан-слово: "${bannedWord}"`, true);
                 saveLogToHistory(currentRoomName, {
                     type: 'moderation_alert',
                     text: `Обнаружено бан-слово "${bannedWord}" от ${myPeerId.substring(0, 8)}...`,
@@ -2135,7 +2242,6 @@
                 });
             }
             
-            // Всё равно отправляем, но с пометкой
             if (!confirm(`Ваше сообщение содержит запрещённое слово "${bannedWord}". Всё равно отправить?`)) {
                 return;
             }
@@ -2151,36 +2257,44 @@
             status: 'sent'
         };
         
+        let sentCount = 0;
         dataConnections.forEach(conn => {
             if (conn.open) {
-                conn.send(payload);
+                try {
+                    conn.send(payload);
+                    sentCount++;
+                } catch(e) {
+                    console.warn('Ошибка отправки сообщения:', e);
+                }
             }
         });
         
-        addMessageToChat(text, 'me', '', null, false, msgId, 'sent');
+        addMessageToChat(text, 'me', '', null, false, msgId, sentCount > 0 ? 'sent' : 'sent');
         messageStatuses.set(msgId, 'sent');
         msgInput.value = '';
         
-        // Симулируем доставку через 500мс
-        setTimeout(() => {
-            updateMessageStatusUI(msgId, 'delivered');
-            messageStatuses.set(msgId, 'delivered');
-            if (currentRoomName && amIHost) {
-                updateMessageStatus(currentRoomName, msgId, 'delivered');
-            }
-            
-            // Отправляем подтверждение доставки
-            dataConnections.forEach(conn => {
-                if (conn.open) {
-                    conn.send({
-                        type: 'message_status',
-                        messageId: msgId,
-                        status: 'delivered',
-                        from: myPeerId
-                    });
+        if (sentCount > 0) {
+            setTimeout(() => {
+                updateMessageStatusUI(msgId, 'delivered');
+                messageStatuses.set(msgId, 'delivered');
+                if (currentRoomName && amIHost) {
+                    updateMessageStatus(currentRoomName, msgId, 'delivered');
                 }
-            });
-        }, 500);
+                
+                dataConnections.forEach(conn => {
+                    if (conn.open) {
+                        try {
+                            conn.send({
+                                type: 'message_status',
+                                messageId: msgId,
+                                status: 'delivered',
+                                from: myPeerId
+                            });
+                        } catch(e) {}
+                    }
+                });
+            }, 500);
+        }
         
         if (dataConnections.length === 0) {
             addSystemMessage('⚠️ Нет подключённых участников. Сообщение видно только вам.');
@@ -2214,17 +2328,19 @@
     function setupDataConnection(conn) {
         if (dataConnections.find(c => c.peer === conn.peer)) {
             debug('Дубликат data соединения: ' + conn.peer.substring(0, 8));
+            try { conn.close(); } catch(e) {}
             return;
         }
         
-        // Проверка бана
         if (isPeerBanned(conn.peer)) {
             debug('Забаненный пользователь пытается подключиться: ' + conn.peer.substring(0, 8));
-            conn.send({
-                type: 'ban_notification',
-                reason: 'Вы забанены в этой комнате',
-                from: myPeerId
-            });
+            try {
+                conn.send({
+                    type: 'ban_notification',
+                    reason: 'Вы забанены в этой комнате',
+                    from: myPeerId
+                });
+            } catch(e) {}
             setTimeout(() => {
                 try { conn.close(); } catch(e) {}
             }, 1000);
@@ -2240,193 +2356,243 @@
         debug('Data соединение установлено: ' + peerShort);
         logToHistory('system', connectMsg);
         
-        // Отправляем текущий бан-лист и настройки модерации
         if (amIHost) {
-            conn.send({
-                type: 'sync_settings',
-                banWords: banWordsList,
-                moderationEnabled: moderationEnabled,
-                bannedPeers: bannedPeers.map(b => b.peerId),
-                from: myPeerId
-            });
-        }
-        
-        if (isSharingScreen && localScreenStream && peer) {
             setTimeout(() => {
-                const call = peer.call(conn.peer, localScreenStream);
-                setupVideoCall(call, conn.peer, 'screen');
-            }, 500);
-        }
-        if (isSharingCamera && localCameraStream && peer) {
-            setTimeout(() => {
-                const call = peer.call(conn.peer, localCameraStream);
-                setupVideoCall(call, conn.peer, 'camera');
-            }, 700);
-        }
-        
-        if (amIHost && currentRoomName) {
-            setTimeout(() => {
-                const history = loadMessageHistory(currentRoomName);
-                if (history.length > 0) {
-                    const recentHistory = history.slice(-50);
-                    conn.send({
-                        type: 'history',
-                        messages: recentHistory,
-                        from: myPeerId
-                    });
-                    
-                    const logs = loadLogHistory(currentRoomName);
-                    if (logs.length > 0) {
-                        const recentLogs = logs.slice(-30);
+                if (conn.open) {
+                    try {
                         conn.send({
-                            type: 'logs',
-                            messages: recentLogs,
+                            type: 'sync_settings',
+                            banWords: banWordsList,
+                            moderationEnabled: moderationEnabled,
+                            bannedPeers: bannedPeers.map(b => b.peerId),
                             from: myPeerId
                         });
-                    }
+                    } catch(e) {}
                 }
             }, 1000);
         }
         
+        if (isSharingScreen && localScreenStream && peer && peer.id) {
+            setTimeout(() => {
+                try {
+                    const call = peer.call(conn.peer, localScreenStream);
+                    setupVideoCall(call, conn.peer, 'screen');
+                } catch(e) {
+                    console.warn('Ошибка видеозвонка screen:', e);
+                }
+            }, 800);
+        }
+        if (isSharingCamera && localCameraStream && peer && peer.id) {
+            setTimeout(() => {
+                try {
+                    const call = peer.call(conn.peer, localCameraStream);
+                    setupVideoCall(call, conn.peer, 'camera');
+                } catch(e) {
+                    console.warn('Ошибка видеозвонка camera:', e);
+                }
+            }, 1000);
+        }
+        
+        if (amIHost && currentRoomName) {
+            setTimeout(() => {
+                if (conn.open) {
+                    try {
+                        const history = loadMessageHistory(currentRoomName);
+                        if (history.length > 0) {
+                            const recentHistory = history.slice(-50);
+                            conn.send({
+                                type: 'history',
+                                messages: recentHistory,
+                                from: myPeerId
+                            });
+                        }
+                        
+                        const logs = loadLogHistory(currentRoomName);
+                        if (logs.length > 0) {
+                            const recentLogs = logs.slice(-30);
+                            conn.send({
+                                type: 'logs',
+                                messages: recentLogs,
+                                from: myPeerId
+                            });
+                        }
+                    } catch(e) {}
+                }
+            }, 2000);
+        }
+        
         conn.on('data', (data) => {
-            // Проверка бана для входящих сообщений
-            if (isPeerBanned(data.from)) {
+            if (!data || !data.type) return;
+            
+            if (data.from && isPeerBanned(data.from)) {
                 return;
             }
             
-            if (data.type === 'text') {
-                // Проверка бан-слов для входящих сообщений
-                const bannedWord = checkBanWords(data.text);
-                if (bannedWord && amIHost && moderationEnabled) {
-                    logModeration(data.from, 'BAN_WORD_DETECTED', `Слово: ${bannedWord}`);
-                    addErrorMessage(`🛡️ [МОДЕРАЦИЯ] Обнаружено бан-слово от ${data.from.substring(0, 8)}...`, true);
+            switch(data.type) {
+                case 'text':
+                    const bannedWord = checkBanWords(data.text);
+                    if (bannedWord && amIHost && moderationEnabled) {
+                        logModeration(data.from, 'BAN_WORD_DETECTED', `Слово: ${bannedWord}`);
+                        addErrorMessage(`🛡️ [МОДЕРАЦИЯ] Обнаружено бан-слово от ${data.from.substring(0, 8)}...`, true);
+                        
+                        const senderConn = dataConnections.find(c => c.peer === data.from);
+                        if (senderConn && senderConn.open) {
+                            try {
+                                senderConn.send({
+                                    type: 'moderation_warning',
+                                    text: `Ваше сообщение содержит запрещённое слово: "${bannedWord}"`,
+                                    from: myPeerId
+                                });
+                            } catch(e) {}
+                        }
+                    }
                     
-                    // Отправляем предупреждение отправителю
-                    const senderConn = dataConnections.find(c => c.peer === data.from);
-                    if (senderConn && senderConn.open) {
-                        senderConn.send({
-                            type: 'moderation_warning',
-                            text: `Ваше сообщение содержит запрещённое слово: "${bannedWord}"`,
-                            from: myPeerId
+                    addMessageToChat(data.text, 'friend', data.from || conn.peer, data.time, false, data.id, data.status);
+                    
+                    if (data.id) {
+                        try {
+                            conn.send({
+                                type: 'message_status',
+                                messageId: data.id,
+                                status: 'read',
+                                from: myPeerId
+                            });
+                        } catch(e) {}
+                    }
+                    
+                    if (amIHost && isMegaRoom) {
+                        dataConnections.forEach(c => {
+                            if (c.peer !== conn.peer && c.peer !== data.from && c.open) {
+                                try {
+                                    c.send(data);
+                                } catch(e) {}
+                            }
                         });
                     }
-                }
-                
-                addMessageToChat(data.text, 'friend', data.from || conn.peer, data.time, false, data.id, data.status);
-                
-                // Отправляем подтверждение прочтения
-                if (data.id) {
-                    conn.send({
-                        type: 'message_status',
-                        messageId: data.id,
-                        status: 'read',
-                        from: myPeerId
-                    });
-                }
-                
-                if (amIHost && isMegaRoom) {
-                    dataConnections.forEach(c => {
-                        if (c.peer !== conn.peer && c.open) {
-                            c.send(data);
-                        }
-                    });
-                }
-            } else if (data.type === 'history') {
-                if (data.messages && Array.isArray(data.messages)) {
-                    addSystemMessage('📂 Получена история чата от хоста', true);
-                    data.messages.forEach(msg => {
-                        if (msg.type === 'system' || msg.msgType === 'system') {
-                            addSystemMessage(msg.text, true);
-                        } else if (msg.from === myPeerId || msg.msgType === 'me') {
-                            addMessageToChat(msg.text, 'me', '', msg.time, true, msg.id, msg.status);
-                        } else {
-                            addMessageToChat(msg.text, 'friend', msg.from || '', msg.time, true, msg.id, msg.status);
-                        }
-                    });
-                    addSystemMessage('━━━ 🔽 Текущие сообщения 🔽 ━━━', true);
-                }
-            } else if (data.type === 'logs') {
-                if (data.messages && Array.isArray(data.messages)) {
-                    data.messages.forEach(log => {
-                        if (log.type === 'error') {
-                            addErrorMessage(log.text, true);
-                        } else {
-                            addSystemMessage(`📋 ${log.text}`, true);
-                        }
-                    });
-                }
-            } else if (data.type === 'voice_activity') {
-                updateRemoteSpeakingIndicator(data.from, data.speaking);
-            } else if (data.type === 'mute_status') {
-                const peerShort = data.from.substring(0, 8);
-                if (data.muted) {
-                    addSystemMessage(`🔇 ${peerShort}... отключил микрофон`, true);
-                } else {
-                    addSystemMessage(`🎤 ${peerShort}... включил микрофон`, true);
-                }
-                updatePeersUI();
-            } else if (data.type === 'message_status') {
-                updateMessageStatusUI(data.messageId, data.status);
-                if (currentRoomName && amIHost) {
-                    updateMessageStatus(currentRoomName, data.messageId, data.status);
-                }
-            } else if (data.type === 'message_deleted') {
-                const msgEl = document.querySelector(`[data-msg-id="${data.messageId}"]`);
-                if (msgEl) {
-                    msgEl.classList.add('deleted');
-                    msgEl.querySelector('.msg-content').innerHTML += ' <em>(удалено)</em>';
-                }
-                if (currentRoomName && amIHost) {
-                    deleteMessageFromHistory(currentRoomName, data.messageId);
-                }
-            } else if (data.type === 'ban_action') {
-                if (data.action === 'ban') {
-                    bannedPeers.push({
-                        peerId: data.peerId,
-                        reason: data.reason,
-                        bannedAt: getFullTimestamp(),
-                        bannedBy: data.from
-                    });
-                    saveBanList(currentRoomName, bannedPeers);
-                    updateBanListUI();
-                    addSystemMessage(`🚫 ${data.peerId.substring(0, 8)}... забанен. Причина: ${data.reason}`, true);
+                    break;
                     
-                    if (data.peerId === myPeerId) {
-                        addErrorMessage('🚫 Вы были забанены в этой комнате!', true);
-                        setTimeout(() => leaveRoom(), 2000);
+                case 'history':
+                    if (data.messages && Array.isArray(data.messages)) {
+                        addSystemMessage('📂 Получена история чата от хоста', true);
+                        data.messages.forEach(msg => {
+                            if (msg.type === 'system' || msg.msgType === 'system') {
+                                addSystemMessage(msg.text, true);
+                            } else if (msg.from === myPeerId || msg.msgType === 'me') {
+                                addMessageToChat(msg.text, 'me', '', msg.time, true, msg.id, msg.status);
+                            } else {
+                                addMessageToChat(msg.text, 'friend', msg.from || '', msg.time, true, msg.id, msg.status);
+                            }
+                        });
+                        addSystemMessage('━━━ 🔽 Текущие сообщения 🔽 ━━━', true);
                     }
-                } else if (data.action === 'unban') {
-                    bannedPeers = bannedPeers.filter(b => b.peerId !== data.peerId);
-                    saveBanList(currentRoomName, bannedPeers);
-                    updateBanListUI();
-                    addSystemMessage(`✅ ${data.peerId.substring(0, 8)}... разбанен`, true);
-                }
-            } else if (data.type === 'sync_settings') {
-                if (data.banWords) {
-                    banWordsList = data.banWords;
-                    banWordsInput.value = data.banWords.join(', ');
-                }
-                if (data.moderationEnabled !== undefined) {
-                    moderationEnabled = data.moderationEnabled;
-                    updateModerationUI();
-                }
-                if (data.bannedPeers) {
-                    bannedPeers = data.bannedPeers.map(pid => ({
-                        peerId: pid,
-                        reason: 'Забанен хостом',
-                        bannedAt: getFullTimestamp(),
-                        bannedBy: data.from
-                    }));
-                    saveBanList(currentRoomName, bannedPeers);
-                    updateBanListUI();
-                }
-            } else if (data.type === 'ban_notification') {
-                addErrorMessage(`🚫 ${data.reason}`, true);
-            } else if (data.type === 'moderation_warning') {
-                addErrorMessage(`⚠️ ${data.text}`, true);
-            } else if (data.type === 'direct_message') {
-                saveDMHistory(myPeerId, data.from, data);
-                addSystemMessage(`💌 ЛС от ${data.from.substring(0, 8)}...: ${data.text}`, true);
+                    break;
+                    
+                case 'logs':
+                    if (data.messages && Array.isArray(data.messages)) {
+                        data.messages.forEach(log => {
+                            if (log.type === 'error') {
+                                addErrorMessage(log.text, true);
+                            } else {
+                                addSystemMessage(`📋 ${log.text}`, true);
+                            }
+                        });
+                    }
+                    break;
+                    
+                case 'voice_activity':
+                    updateRemoteSpeakingIndicator(data.from, data.speaking);
+                    break;
+                    
+                case 'mute_status':
+                    const mutePeerShort = data.from.substring(0, 8);
+                    if (data.muted) {
+                        addSystemMessage(`🔇 ${mutePeerShort}... отключил микрофон`, true);
+                    } else {
+                        addSystemMessage(`🎤 ${mutePeerShort}... включил микрофон`, true);
+                    }
+                    updatePeersUI();
+                    break;
+                    
+                case 'message_status':
+                    updateMessageStatusUI(data.messageId, data.status);
+                    if (currentRoomName && amIHost) {
+                        updateMessageStatus(currentRoomName, data.messageId, data.status);
+                    }
+                    break;
+                    
+                case 'message_deleted':
+                    const msgEl = document.querySelector(`[data-msg-id="${data.messageId}"]`);
+                    if (msgEl) {
+                        msgEl.classList.add('deleted');
+                        const contentDiv = msgEl.querySelector('.msg-content div:first-child');
+                        if (contentDiv) {
+                            contentDiv.innerHTML += ' <em>(удалено)</em>';
+                        }
+                    }
+                    if (currentRoomName && amIHost) {
+                        deleteMessageFromHistory(currentRoomName, data.messageId);
+                    }
+                    break;
+                    
+                case 'ban_action':
+                    if (data.action === 'ban') {
+                        bannedPeers.push({
+                            peerId: data.peerId,
+                            reason: data.reason,
+                            bannedAt: getFullTimestamp(),
+                            bannedBy: data.from
+                        });
+                        saveBanList(currentRoomName, bannedPeers);
+                        updateBanListUI();
+                        addSystemMessage(`🚫 ${data.peerId.substring(0, 8)}... забанен. Причина: ${data.reason}`, true);
+                        
+                        if (data.peerId === myPeerId) {
+                            addErrorMessage('🚫 Вы были забанены в этой комнате!', true);
+                            setTimeout(() => leaveRoom(), 2000);
+                        } else {
+                            closePeerConnections(data.peerId);
+                        }
+                    } else if (data.action === 'unban') {
+                        bannedPeers = bannedPeers.filter(b => b.peerId !== data.peerId);
+                        saveBanList(currentRoomName, bannedPeers);
+                        updateBanListUI();
+                        addSystemMessage(`✅ ${data.peerId.substring(0, 8)}... разбанен`, true);
+                    }
+                    break;
+                    
+                case 'sync_settings':
+                    if (data.banWords) {
+                        banWordsList = data.banWords;
+                        banWordsInput.value = data.banWords.join(', ');
+                    }
+                    if (data.moderationEnabled !== undefined) {
+                        moderationEnabled = data.moderationEnabled;
+                        updateModerationUI();
+                    }
+                    if (data.bannedPeers) {
+                        bannedPeers = data.bannedPeers.map(pid => ({
+                            peerId: pid,
+                            reason: 'Забанен хостом',
+                            bannedAt: getFullTimestamp(),
+                            bannedBy: data.from
+                        }));
+                        saveBanList(currentRoomName, bannedPeers);
+                        updateBanListUI();
+                    }
+                    break;
+                    
+                case 'ban_notification':
+                    addErrorMessage(`🚫 ${data.reason}`, true);
+                    break;
+                    
+                case 'moderation_warning':
+                    addErrorMessage(`⚠️ ${data.text}`, true);
+                    break;
+                    
+                case 'direct_message':
+                    saveDMHistory(myPeerId, data.from, data);
+                    addSystemMessage(`💌 ЛС от ${data.from.substring(0, 8)}...: ${data.text}`, true);
+                    break;
             }
         });
         
@@ -2438,11 +2604,13 @@
             if (audioCall) {
                 try { audioCall.close(); } catch(e) {}
                 mediaCalls = mediaCalls.filter(c => c.peer !== conn.peer);
+                const audioElem = document.getElementById('audio-' + conn.peer.substring(0, 8));
+                if (audioElem) audioElem.remove();
             }
             
             const videoCall = videoCalls.find(c => c.peer === conn.peer);
             if (videoCall) {
-                try { videoCall.close(); } catch(e) {}
+                try { videoCall.call.close(); } catch(e) {}
                 videoCalls = videoCalls.filter(c => c.peer !== conn.peer);
             }
             
@@ -2476,6 +2644,8 @@
         if (existingIdx >= 0) {
             try { mediaCalls[existingIdx].close(); } catch(e) {}
             mediaCalls.splice(existingIdx, 1);
+            const oldElem = document.getElementById('audio-' + call.peer.substring(0, 8));
+            if (oldElem) oldElem.remove();
         }
         
         mediaCalls.push(call);
@@ -2497,6 +2667,11 @@
         debug('🔊 Аудио-звонок установлен: ' + peerShort);
         
         const handleStream = (remoteStream) => {
+            if (!remoteStream) {
+                debug('⚠️ Пустой поток от: ' + peerShort);
+                return;
+            }
+            
             const audioTracks = remoteStream.getAudioTracks();
             if (audioTracks.length === 0) {
                 debug('⚠️ Поток без аудио от: ' + peerShort);
@@ -2505,25 +2680,27 @@
             
             debug('🔊 Получен аудио-поток от: ' + peerShort + ' (дорожек: ' + audioTracks.length + ')');
             
-            if (audioElem.srcObject) {
-                debug('🔊 Аудио уже подключено для: ' + peerShort);
-                return;
+            if (!audioElem.srcObject) {
+                audioElem.srcObject = remoteStream;
+                audioElem.play().then(() => {
+                    debug('🔊 Аудио играет от: ' + peerShort);
+                }).catch((e) => {
+                    debug('👆 Ожидание взаимодействия для звука от: ' + peerShort);
+                });
             }
-            
-            audioElem.srcObject = remoteStream;
-            
-            audioElem.play().then(() => {
-                debug('🔊 Аудио играет от: ' + peerShort);
-            }).catch((e) => {
-                debug('👆 Ожидание клика для звука от: ' + peerShort);
-            });
         };
         
         if (call.peerConnection) {
-            const remoteStreams = call.peerConnection.getRemoteStreams ? call.peerConnection.getRemoteStreams() : [];
-            if (remoteStreams.length > 0) {
-                debug('🔊 Поток уже доступен для: ' + peerShort);
-                handleStream(remoteStreams[0]);
+            try {
+                const receivers = call.peerConnection.getReceivers ? call.peerConnection.getReceivers() : [];
+                receivers.forEach(receiver => {
+                    if (receiver.track && receiver.track.kind === 'audio') {
+                        const remoteStream = new MediaStream([receiver.track]);
+                        handleStream(remoteStream);
+                    }
+                });
+            } catch(e) {
+                debug('Ошибка получения раннего потока: ' + e.message);
             }
         }
         
@@ -2540,6 +2717,9 @@
             const errMsg = 'Ошибка аудио-звонка: ' + err.message;
             debug(errMsg);
             logToHistory('error', errMsg);
+            mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
+            audioElem.remove();
+            updatePeersUI();
         });
     }
 
@@ -2563,11 +2743,17 @@
         if (oldCall) {
             try { oldCall.close(); } catch(e) {}
             mediaCalls = mediaCalls.filter(c => c.peer !== peerId);
+            const oldElem = document.getElementById('audio-' + peerId.substring(0, 8));
+            if (oldElem) oldElem.remove();
         }
         
         debug('📞 Звоним аудио: ' + peerId.substring(0, 8));
-        const call = peer.call(peerId, localAudioStream);
-        setupMediaCall(call);
+        try {
+            const call = peer.call(peerId, localAudioStream);
+            setupMediaCall(call);
+        } catch(e) {
+            debug('Ошибка звонка: ' + e.message);
+        }
     }
 
     function refreshAllAudio() {
@@ -2586,74 +2772,149 @@
                 if (!isPeerBanned(conn.peer)) {
                     setTimeout(() => {
                         callPeerAudio(conn.peer);
-                    }, 300);
+                    }, 500);
                 }
             });
             addSystemMessage('🔄 Хост переподключает звук всем участникам...');
         } else if (hostPeerId && !isPeerBanned(hostPeerId)) {
             setTimeout(() => {
                 callPeerAudio(hostPeerId);
-            }, 300);
+            }, 500);
             addSystemMessage('🔄 Переподключение звука к хосту...');
         }
         
-        if (isSharingScreen && localScreenStream) {
+        if (isSharingScreen && localScreenStream && peer && peer.id) {
             closeAllVideoCalls();
-            setTimeout(() => broadcastVideo(localScreenStream, 'screen'), 500);
+            setTimeout(() => broadcastVideo(localScreenStream, 'screen'), 1000);
         }
-        if (isSharingCamera && localCameraStream) {
+        if (isSharingCamera && localCameraStream && peer && peer.id) {
             closeAllVideoCalls();
-            setTimeout(() => broadcastVideo(localCameraStream, 'camera'), 700);
+            setTimeout(() => broadcastVideo(localCameraStream, 'camera'), 1200);
         }
         
         updatePeersUI();
     }
 
+    // ============ Переподключение ============
+    function showReconnecting(show) {
+        if (show) {
+            reconnectIndicator.classList.add('active');
+            statusDisplay.innerText = '🔄 Переподключение...';
+        } else {
+            reconnectIndicator.classList.remove('active');
+        }
+    }
+
+    function attemptReconnect() {
+        if (peerDestroyed) return;
+        if (!currentRoomName) return;
+        
+        reconnectAttempts++;
+        
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+            debug('Превышено количество попыток переподключения');
+            addErrorMessage('❌ Не удалось переподключиться. Попробуйте зайти заново.');
+            showReconnecting(false);
+            return;
+        }
+        
+        const delay = RECONNECT_DELAY_BASE * Math.min(reconnectAttempts, 5);
+        debug(`Попытка переподключения ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} через ${delay}мс`);
+        showReconnecting(true);
+        
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        
+        reconnectTimer = setTimeout(async () => {
+            if (peerDestroyed) return;
+            
+            if (peer) {
+                try { peer.destroy(); } catch(e) {}
+                peer = null;
+            }
+            
+            dataConnections = [];
+            mediaCalls = [];
+            videoCalls = [];
+            audioContainers.innerHTML = '';
+            
+            const randomId = Math.random().toString(36).substring(2, 6);
+            let myId = '';
+            let targetHostId = null;
+            
+            if (amIHost) {
+                myId = await hashRoomName(currentRoomName, 'host');
+            } else if (hostPeerId) {
+                targetHostId = hostPeerId;
+                myId = (await hashRoomName(currentRoomName, 'guest')) + '_' + randomId;
+            }
+            
+            if (myId) {
+                initPeerInternal(myId, targetHostId);
+            }
+        }, delay);
+    }
+
     // ============ PeerJS инициализация ============
     function initPeer(myId, hostId = null) {
+        peerDestroyed = false;
+        reconnectAttempts = 0;
+        initPeerInternal(myId, hostId);
+    }
+    
+    function initPeerInternal(myId, hostId = null) {
         if (peer) {
-            peer.destroy();
+            try { peer.destroy(); } catch(e) {}
+            peer = null;
         }
         
         debug('Инициализация PeerJS: ' + myId.substring(0, 16));
         logToHistory('system', 'Инициализация PeerJS');
         
         peer = new Peer(myId, {
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
-                ],
-                iceCandidatePoolSize: 2
-            }
+            host: PEERJS_CONFIG.host,
+            port: PEERJS_CONFIG.port,
+            secure: PEERJS_CONFIG.secure,
+            path: PEERJS_CONFIG.path,
+            config: PEERJS_CONFIG.config,
+            pingInterval: PEERJS_CONFIG.pingInterval,
+            debug: PEERJS_CONFIG.debug
         });
         
+        if (connectionTimeout) clearTimeout(connectionTimeout);
+        connectionTimeout = setTimeout(() => {
+            if (peer && !peer.id && !peer.destroyed) {
+                debug('Таймаут подключения к сигнальному серверу');
+                attemptReconnect();
+            }
+        }, CONNECTION_TIMEOUT);
+        
         peer.on('open', async (id) => {
+            if (connectionTimeout) clearTimeout(connectionTimeout);
+            
             myPeerId = id;
-            myAvatar = getUniqueAvatar(id);
+            if (!myAvatar) {
+                myAvatar = getUniqueAvatar(id);
+            }
+            
+            reconnectAttempts = 0;
+            showReconnecting(false);
             statusDisplay.innerText = '🟢 Онлайн';
             debug('Peer открыт: ' + id.substring(0, 16));
             logToHistory('system', 'Peer открыт, ID: ' + id.substring(0, 16));
             updatePeersUI();
             
-            await getMicrophone();
+            if (!localAudioStream) {
+                await getMicrophone();
+            }
             
-            // Загружаем настройки модерации
             if (amIHost) {
-                bannedPeers = getBanList(currentRoomName);
-                banWordsList = getBanWords(currentRoomName);
-                banWordsInput.value = banWordsList.join(', ');
+                if (!bannedPeers || bannedPeers.length === 0) {
+                    bannedPeers = getBanList(currentRoomName);
+                }
+                if (!banWordsList || banWordsList.length === 0) {
+                    banWordsList = getBanWords(currentRoomName);
+                    banWordsInput.value = banWordsList.join(', ');
+                }
                 updateBanListUI();
                 updateModerationUI();
             }
@@ -2662,8 +2923,6 @@
                 restoreHistoryToChat(currentRoomName);
                 historyRestored = true;
                 updateHistoryInfo(currentRoomName);
-                
-                // Показываем панель модерации для хоста
                 modPanel.style.display = 'block';
             }
             
@@ -2673,17 +2932,21 @@
                 debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
                 logToHistory('system', 'Подключение к хосту: ' + hostId.substring(0, 16));
                 
-                const conn = peer.connect(hostId, {
-                    reliable: true
-                });
-                setupDataConnection(conn);
-                
-                if (localAudioStream) {
-                    setTimeout(() => {
-                        debug('📞 ГОСТЬ звонит хосту со своим аудио');
-                        callPeerAudio(hostId);
-                    }, 1500);
-                }
+                setTimeout(() => {
+                    if (peer && peer.id && !peerDestroyed) {
+                        const conn = peer.connect(hostId, {
+                            reliable: true
+                        });
+                        setupDataConnection(conn);
+                        
+                        if (localAudioStream) {
+                            setTimeout(() => {
+                                debug('📞 ГОСТЬ звонит хосту со своим аудио');
+                                callPeerAudio(hostId);
+                            }, 2000);
+                        }
+                    }
+                }, 1000);
             }
         });
         
@@ -2695,29 +2958,36 @@
             if (amIHost && localAudioStream && !isPeerBanned(conn.peer)) {
                 setTimeout(() => {
                     const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
-                    if (!hasAudio) {
+                    if (!hasAudio && peer && peer.id && !peerDestroyed) {
                         debug('📞 ХОСТ звонит гостю');
                         callPeerAudio(conn.peer);
                     }
-                }, 2000);
+                }, 2500);
             }
         });
         
         peer.on('call', (call) => {
             if (isPeerBanned(call.peer)) {
                 debug('Отклоняем звонок от забаненного: ' + call.peer.substring(0, 8));
-                call.close();
+                try { call.close(); } catch(e) {}
                 return;
             }
             
             debug('📞 Входящий звонок от: ' + call.peer.substring(0, 16));
             
             if (localAudioStream) {
-                call.answer(localAudioStream);
-                debug('📞 Отвечаем с локальным аудио');
+                try {
+                    call.answer(localAudioStream);
+                    debug('📞 Отвечаем с локальным аудио');
+                } catch(e) {
+                    debug('📞 Ошибка ответа с аудио: ' + e.message);
+                    try { call.answer(); } catch(e2) {}
+                }
             } else {
-                call.answer();
-                debug('📞 Отвечаем без аудио');
+                try { call.answer(); } catch(e) {
+                    debug('📞 Ошибка ответа: ' + e.message);
+                    return;
+                }
             }
             
             setTimeout(() => {
@@ -2725,29 +2995,31 @@
                 
                 try {
                     if (call.peerConnection) {
-                        const remoteStreams = call.peerConnection.getRemoteStreams ? call.peerConnection.getRemoteStreams() : [];
-                        if (remoteStreams.length > 0) {
-                            gotStream = true;
-                            const remoteStream = remoteStreams[0];
-                            
-                            if (remoteStream.getVideoTracks().length > 0) {
-                                const label = remoteStream.getVideoTracks()[0].label || '';
-                                let videoType = 'screen';
-                                if (label.toLowerCase().includes('camera') || 
-                                    label.toLowerCase().includes('front') || 
-                                    label.toLowerCase().includes('back')) {
-                                    videoType = 'camera';
-                                }
-                                receiveVideoStream(remoteStream, call.peer, videoType);
-                                setupVideoCall(call, call.peer, videoType);
-                            } else if (remoteStream.getAudioTracks().length > 0) {
-                                setupMediaCall(call);
-                                const mediaCall = mediaCalls.find(c => c.peer === call.peer);
-                                if (mediaCall) {
-                                    call.emit('stream', remoteStream);
+                        const receivers = call.peerConnection.getReceivers ? call.peerConnection.getReceivers() : [];
+                        receivers.forEach(receiver => {
+                            if (receiver.track) {
+                                gotStream = true;
+                                const remoteStream = new MediaStream([receiver.track]);
+                                
+                                if (receiver.track.kind === 'video') {
+                                    const label = receiver.track.label || '';
+                                    let videoType = 'screen';
+                                    if (label.toLowerCase().includes('camera') || 
+                                        label.toLowerCase().includes('front') || 
+                                        label.toLowerCase().includes('back')) {
+                                        videoType = 'camera';
+                                    }
+                                    receiveVideoStream(remoteStream, call.peer, videoType);
+                                    setupVideoCall(call, call.peer, videoType);
+                                } else if (receiver.track.kind === 'audio') {
+                                    setupMediaCall(call);
+                                    const mediaCall = mediaCalls.find(c => c.peer === call.peer);
+                                    if (mediaCall) {
+                                        call.emit('stream', remoteStream);
+                                    }
                                 }
                             }
-                        }
+                        });
                     }
                 } catch(e) {
                     debug('📞 Ошибка проверки потока: ' + e.message);
@@ -2756,7 +3028,11 @@
                 if (!gotStream) {
                     debug('📞 Поток ещё не доступен, ждём событие stream для: ' + call.peer.substring(0, 8));
                     
+                    let streamHandled = false;
                     call.on('stream', (remoteStream) => {
+                        if (streamHandled) return;
+                        streamHandled = true;
+                        
                         debug('📞 Событие stream для: ' + call.peer.substring(0, 8));
                         
                         if (remoteStream.getVideoTracks().length > 0) {
@@ -2769,7 +3045,7 @@
                             }
                             receiveVideoStream(remoteStream, call.peer, videoType);
                             setupVideoCall(call, call.peer, videoType);
-                        } else {
+                        } else if (remoteStream.getAudioTracks().length > 0) {
                             setupMediaCall(call);
                             const mediaCall = mediaCalls.find(c => c.peer === call.peer);
                             if (mediaCall) {
@@ -2778,20 +3054,29 @@
                         }
                     });
                 }
-            }, 500);
+            }, 1000);
         });
         
         peer.on('error', (err) => {
             console.error('PeerJS error:', err);
+            
+            if (connectionTimeout) clearTimeout(connectionTimeout);
+            
+            if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'disconnected') {
+                debug('Ошибка сети: ' + err.type + ' - ' + (err.message || ''));
+                attemptReconnect();
+                return;
+            }
+            
             const errMsg = 'Ошибка PeerJS: ' + err.type + ' - ' + (err.message || '');
             debug(errMsg);
             
             if (err.type === 'peer-unavailable') {
                 statusDisplay.innerText = '❌ Комната не найдена';
                 addErrorMessage('⚠️ Хост не в сети. Проверьте название комнаты.');
-            } else if (err.type === 'disconnected') {
-                statusDisplay.innerText = '🔴 Соединение потеряно';
-                addErrorMessage('🔴 Соединение с сигнальным сервером потеряно.');
+            } else if (err.type === 'unavailable-id') {
+                statusDisplay.innerText = '❌ ID занят';
+                addErrorMessage('⚠️ Этот ID уже используется. Попробуйте другое имя комнаты.');
             } else {
                 statusDisplay.innerText = '❌ Ошибка: ' + err.type;
                 addErrorMessage('❌ ' + errMsg);
@@ -2801,11 +3086,12 @@
         });
         
         peer.on('disconnected', () => {
-            statusDisplay.innerText = '🔴 Отключён от сервера';
-            const msg = 'Отключён от сигнального сервера. Нажмите "Покинуть комнату" и зайдите заново.';
-            addErrorMessage('🔴 ' + msg);
-            debug(msg);
-            logToHistory('error', msg);
+            debug('Отключён от сигнального сервера');
+            attemptReconnect();
+        });
+        
+        peer.on('close', () => {
+            debug('Peer закрыт');
         });
     }
 
@@ -2827,15 +3113,16 @@
         banWordsList = input.split(',').map(w => w.trim()).filter(w => w.length > 0);
         saveBanWords(currentRoomName, banWordsList);
         
-        // Рассылаем обновление всем
         dataConnections.forEach(conn => {
             if (conn.open) {
-                conn.send({
-                    type: 'sync_settings',
-                    banWords: banWordsList,
-                    moderationEnabled: moderationEnabled,
-                    from: myPeerId
-                });
+                try {
+                    conn.send({
+                        type: 'sync_settings',
+                        banWords: banWordsList,
+                        moderationEnabled: moderationEnabled,
+                        from: myPeerId
+                    });
+                } catch(e) {}
             }
         });
         
@@ -2847,15 +3134,16 @@
         moderationEnabled = !moderationEnabled;
         updateModerationUI();
         
-        // Рассылаем обновление всем
         dataConnections.forEach(conn => {
             if (conn.open) {
-                conn.send({
-                    type: 'sync_settings',
-                    banWords: banWordsList,
-                    moderationEnabled: moderationEnabled,
-                    from: myPeerId
-                });
+                try {
+                    conn.send({
+                        type: 'sync_settings',
+                        banWords: banWordsList,
+                        moderationEnabled: moderationEnabled,
+                        from: myPeerId
+                    });
+                } catch(e) {}
             }
         });
         
@@ -2871,6 +3159,21 @@
             return;
         }
         
+        // Очистка предыдущего состояния
+        if (peer) {
+            peerDestroyed = true;
+            try { peer.destroy(); } catch(e) {}
+            peer = null;
+        }
+        
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        if (connectionTimeout) clearTimeout(connectionTimeout);
+        
+        dataConnections = [];
+        mediaCalls = [];
+        videoCalls = [];
+        audioContainers.innerHTML = '';
+        
         isMegaRoom = megaMode;
         amIHost = (role === 'host');
         hostPeerId = null;
@@ -2880,6 +3183,9 @@
         banWordsList = [];
         bannedPeers = [];
         mutedPeers = new Set();
+        reconnectAttempts = 0;
+        peerDestroyed = false;
+        messageStatuses = new Map();
         
         loginOverlay.style.display = 'none';
         roomDisplay.innerText = roomName + (isMegaRoom ? ' 🔥MEGA' : '');
@@ -2916,6 +3222,11 @@
         debug('Выход из комнаты...');
         logToHistory('system', 'Выход из комнаты');
         
+        peerDestroyed = true;
+        
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        if (connectionTimeout) clearTimeout(connectionTimeout);
+        
         stopScreenShare();
         stopCameraShare();
         
@@ -2924,8 +3235,8 @@
         });
         mediaCalls = [];
         
-        videoCalls.forEach(call => {
-            try { call.close(); } catch(e) {}
+        videoCalls.forEach(vc => {
+            try { vc.call.close(); } catch(e) {}
         });
         videoCalls = [];
         
@@ -2935,14 +3246,31 @@
         dataConnections = [];
         
         if (peer) {
-            peer.destroy();
+            try { peer.destroy(); } catch(e) {}
             peer = null;
         }
         
         audioContainers.innerHTML = '';
-        localAudioStream = null;
-        localScreenStream = null;
-        localCameraStream = null;
+        
+        if (localAudioStream) {
+            localAudioStream.getTracks().forEach(track => track.stop());
+            localAudioStream = null;
+        }
+        if (localScreenStream) {
+            localScreenStream.getTracks().forEach(track => track.stop());
+            localScreenStream = null;
+        }
+        if (localCameraStream) {
+            localCameraStream.getTracks().forEach(track => track.stop());
+            localCameraStream = null;
+        }
+        
+        if (audioContext && audioContext.state !== 'closed') {
+            try { audioContext.close(); } catch(e) {}
+            audioContext = null;
+        }
+        gainNode = null;
+        
         hostPeerId = null;
         isSharingScreen = false;
         isSharingCamera = false;
@@ -2951,8 +3279,10 @@
         isBlurred = false;
         moderationEnabled = false;
         mutedPeers = new Set();
+        reconnectAttempts = 0;
         
         releaseAvatar(myAvatar);
+        myAvatar = '';
         
         screenVideo.srcObject = null;
         screenShareContainer.classList.remove('active');
@@ -2971,6 +3301,7 @@
         modPanel.style.display = 'none';
         modStatusBadge.textContent = 'Выкл';
         modStatusBadge.className = 'mod-status mod-inactive';
+        showReconnecting(false);
         
         updatePeersUI();
         chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли из комнаты</div>';
@@ -3032,20 +3363,30 @@
         }
     });
 
-    // Обработка бинда
     document.addEventListener('keydown', (e) => {
         if (isBinding) {
             e.preventDefault();
-            setBlurBind(e.key);
+            e.stopPropagation();
+            if (e.key && e.key.length === 1) {
+                setBlurBind(e.key);
+            } else if (e.key === 'Escape') {
+                isBinding = false;
+                bindBlurBtn.innerText = blurBindKey ? `🔑 Бинд: ${blurBindKey.toUpperCase()}` : '🔑 Бинд блюра (не задан)';
+                bindBlurBtn.classList.remove('active');
+                bindIndicator.innerText = blurBindKey ? `✅ Бинд блюра: ${blurBindKey.toUpperCase()}` : '';
+            }
             return;
         }
         
-        if (blurBindKey && e.key.toLowerCase() === blurBindKey.toLowerCase()) {
+        if (blurBindKey && e.key.toLowerCase() === blurBindKey.toLowerCase() && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            if (document.activeElement === msgInput) return;
             if (isSharingScreen || isSharingCamera) {
                 toggleBlur();
             }
         }
     });
+
+    refreshAudioBtn.addEventListener('click', refreshAllAudio);
 
     clearHistoryBtn.addEventListener('click', () => {
         if (currentRoomName && confirm('Очистить всю историю чата и логов для этой комнаты?')) {
@@ -3063,7 +3404,8 @@
 
     sendBtn.addEventListener('click', sendMessage);
     msgInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
             sendMessage();
         }
     });
@@ -3078,14 +3420,12 @@
         }
     });
 
-    // Закрытие контекстного меню
     document.addEventListener('click', (e) => {
-        if (!contextMenu.contains(e.target)) {
+        if (contextMenu && !contextMenu.contains(e.target)) {
             contextMenu.style.display = 'none';
         }
     });
 
-    // Глобальная разблокировка звука
     document.addEventListener('click', () => {
         ensureAudio();
         const audios = audioContainers.querySelectorAll('audio');
@@ -3100,10 +3440,8 @@
         ensureAudio();
     }, { once: true });
 
-    // Загрузка бинда при старте
     loadBlurBind();
 
-    // Восстановление последней комнаты
     window.addEventListener('beforeunload', () => {
         if (currentRoomName && amIHost) {
             try {
@@ -3122,7 +3460,7 @@
             
             if (lastRoom && lastRole) {
                 const quickJoin = document.createElement('button');
-                quickJoin.style.cssText = 'background:#ff0000;color:#ffffff;margin-top:8px;font-size:0.8em;border:1px solid #ff4444;';
+                quickJoin.style.cssText = 'background:#ff0000;color:#ffffff;margin-top:8px;font-size:0.8em;border:1px solid #ff4444;width:100%;';
                 quickJoin.innerText = `⚡ Вернуться в "${lastRoom}"`;
                 quickJoin.addEventListener('click', () => {
                     roomInput.value = lastRoom;
@@ -3141,7 +3479,7 @@
         } catch (e) {}
     })();
 
-    console.log('✅ P2P Discord-Style Rooms. Модерация, бинды, аватарки, статусы.');
+    console.log('✅ P2P Discord-Style Rooms v3.0. Улучшенная стабильность соединения.');
 </script>
 
 </body>
