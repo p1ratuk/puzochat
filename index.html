@@ -6,397 +6,756 @@
     <title>P2P Мега-Комнаты</title>
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            background: #1e1e2e; color: #cdd6f4;
-            display: flex; height: 100dvh; overflow: hidden;
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
         }
-        #sidebar {
-            width: 280px; background: #252538; padding: 20px;
-            display: flex; flex-direction: column;
-            border-right: 2px solid #313244; flex-shrink: 0; gap: 15px;
+        body { 
+            font-family: 'Segoe UI', -apple-system, sans-serif; 
+            background-color: #1e1e2e; 
+            color: #cdd6f4; 
+            display: flex; 
+            height: 100dvh; 
+            margin: 0; 
+            overflow: hidden; 
         }
-        #main-area {
-            flex: 1; display: flex; flex-direction: column;
-            background: #181825; height: 100%;
+        #sidebar { 
+            width: 300px; 
+            background-color: #252538; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            border-right: 2px solid #313244; 
+            flex-shrink: 0; 
+            overflow-y: auto; 
+            gap: 12px;
         }
-        #chat-window {
-            flex: 1; padding: 20px; overflow-y: auto;
-            display: flex; flex-direction: column; gap: 8px;
+        #main-area { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            background-color: #181825; 
+            height: 100%; 
         }
-        #input-area {
-            padding: 15px; background: #313244; display: flex; gap: 10px;
+        #chat-window { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
         }
-        .msg {
-            padding: 10px 14px; border-radius: 12px; max-width: 75%;
-            word-break: break-word; font-size: 0.95em; line-height: 1.4;
+        #input-area { 
+            padding: 15px; 
+            background-color: #313244; 
+            display: flex; 
+            gap: 10px; 
+            align-items: center; 
         }
-        .msg.me { background: #89b4fa; color: #11111b; align-self: flex-end; }
-        .msg.friend { background: #45475a; align-self: flex-start; }
+        .msg { 
+            padding: 10px 14px; 
+            border-radius: 8px; 
+            max-width: 75%; 
+            word-break: break-word; 
+            font-size: 0.95em; 
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .msg.me { 
+            background-color: #89b4fa; 
+            color: #11111b; 
+            align-self: flex-end; 
+            flex-direction: row-reverse;
+        }
+        .msg.friend { 
+            background-color: #45475a; 
+            color: #cdd6f4; 
+            align-self: flex-start; 
+        }
         .msg.system {
-            align-self: center; background: none; color: #6c7086;
-            font-size: 0.8em; text-align: center;
+            align-self: center;
+            background: none;
+            color: #6c7086;
+            text-align: center;
+            font-size: 0.8em;
+            justify-content: center;
         }
-        .room-box {
-            font-size: 1.1em; background: #11111b; padding: 12px;
-            border-radius: 8px; text-align: center; font-weight: bold;
-            color: #f9e2af; border: 1px solid #313244; word-break: break-all;
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: #585b70;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2em;
+            overflow: hidden;
         }
-        input[type="text"] {
-            flex: 1; padding: 12px; border: none; border-radius: 8px;
-            background: #45475a; color: #fff; font-size: 1em; outline: none;
+        .msg.me .avatar {
+            background: #1e66f5;
         }
-        button {
-            background: #a6e3a1; color: #11111b; border: none;
-            padding: 10px 16px; font-weight: bold; border-radius: 8px;
-            cursor: pointer; font-size: 0.9em; white-space: nowrap;
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .msg-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .msg-time {
+            font-size: 0.7em;
+            opacity: 0.6;
+            margin-top: 2px;
+        }
+        .room-box { 
+            font-size: 1.1em; 
+            background: #11111b; 
+            padding: 12px; 
+            border-radius: 6px; 
+            text-align: center; 
+            font-weight: bold; 
+            margin-bottom: 5px; 
+            color: #f9e2af; 
+            border: 1px solid #313244; 
+            word-break: break-all;
+        }
+        input[type="text"] { 
+            flex: 1; 
+            padding: 12px; 
+            border: none; 
+            border-radius: 6px; 
+            background-color: #45475a; 
+            color: #fff; 
+            font-size: 1em; 
+            outline: none;
+        }
+        button { 
+            background-color: #a6e3a1; 
+            color: #11111b; 
+            border: none; 
+            padding: 12px 15px; 
+            font-weight: bold; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 0.95em; 
             transition: 0.2s;
         }
-        button:disabled { background: #585b70; color: #7f849c; cursor: not-allowed; }
-        button:hover:not(:disabled) { filter: brightness(1.1); }
-        .volume-control {
-            display: flex; flex-direction: column; gap: 6px;
-            background: #181825; padding: 12px; border-radius: 8px;
+        button:active {
+            transform: scale(0.95);
+        }
+        button:disabled { 
+            background-color: #585b70; 
+            color: #7f849c; 
+            cursor: not-allowed; 
+            transform: none;
+        }
+        .volume-control { 
+            margin: 10px 0; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            background: #181825; 
+            padding: 12px; 
+            border-radius: 6px; 
+        }
+        .volume-control label { 
+            font-size: 0.85em; 
+            color: #a6adc8; 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        .volume-control input[type="range"] { 
+            width: 100%; 
+            accent-color: #a6e3a1; 
+            cursor: pointer; 
+        }
+        #login-overlay { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: #11111b; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 9999; 
+        }
+        .login-card { 
+            background: #252538; 
+            padding: 30px; 
+            border-radius: 12px; 
+            border: 1px solid #313244; 
+            width: 90%; 
+            max-width: 400px; 
+            text-align: center; 
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .login-card h2 {
+            color: #89b4fa;
+            margin-bottom: 5px;
+        }
+        .btn-mega { 
+            background-color: #f38ba8; 
+        }
+        .btn-join {
+            background-color: #89b4fa;
+        }
+        .btn-leave {
+            background-color: #eba0ac;
+            margin-top: auto;
+        }
+        #audio-containers { 
+            display: none; 
+        }
+        .peers-box {
+            background: #11111b;
+            padding: 10px;
+            border-radius: 6px;
             font-size: 0.85em;
         }
-        input[type="range"] { width: 100%; accent-color: #a6e3a1; }
-        #login-overlay {
-            position: fixed; inset: 0; background: #11111b;
-            display: flex; justify-content: center; align-items: center;
-            z-index: 9999;
+        .peer-item {
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .login-card {
-            background: #252538; padding: 30px; border-radius: 16px;
-            border: 1px solid #313244; width: 90%; max-width: 380px;
-            display: flex; flex-direction: column; gap: 12px; text-align: center;
+        .peer-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #a6e3a1;
+            flex-shrink: 0;
         }
-        .btn-mega { background: #f38ba8; }
-        .btn-join { background: #89b4fa; }
-        #peers-list { font-size: 0.8em; color: #bac2de; max-height: 150px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
 <div id="login-overlay">
     <div class="login-card">
-        <h2 style="color: #89b4fa;">🔊 P2P Лобби</h2>
+        <h2>🎙️ P2P Лобби</h2>
         <p style="color: #a6adc8; font-size: 0.9em;">Введите название комнаты</p>
-        <input type="text" id="room-input" placeholder="Секретное слово..." style="text-align: center;">
-        <button id="create-room-btn">➕ Создать комнату (1 на 1)</button>
+        <input type="text" id="room-input" placeholder="Название комнаты..." style="text-align: center;">
+        
+        <button id="create-room-btn">Создать комнату (1 на 1)</button>
         <button id="create-mega-btn" class="btn-mega">🔥 Создать МЕГА-комнату</button>
         <button id="join-room-btn" class="btn-join">🚪 Войти в комнату</button>
-        <p style="font-size:0.7em;color:#585b70;">Микрофон включится после входа</p>
+        
+        <p style="font-size:0.7em;color:#585b70;margin-top:8px;">
+            💡 Демки скидывайте через чат ссылками
+        </p>
     </div>
 </div>
 
 <div id="sidebar">
-    <h3 style="font-size:0.9em;color:#a6adc8;">🏠 Комната:</h3>
+    <h3 style="margin: 0; font-size: 0.9em; color: #a6adc8;">🏠 Комната:</h3>
     <div class="room-box" id="room-display">---</div>
-    <div id="status" style="color:#a6e3a1;font-weight:bold;font-size:0.9em;">Ожидание...</div>
-    <div id="peers-count" style="font-size:0.85em;">👥 Участников: 0</div>
-    <div id="peers-list"></div>
+    
+    <div id="status" style="color: #a6e3a1; font-weight: bold; font-size: 0.9em; word-break: break-all;">
+        Ожидание...
+    </div>
+    
+    <div class="peers-box">
+        <div id="peers-count" style="font-weight: bold; margin-bottom: 6px;">👥 Участников: 1</div>
+        <div id="peers-list"></div>
+    </div>
+
     <div class="volume-control">
-        <span>🎤 Мой микрофон: <strong id="my-vol-txt">100%</strong></span>
+        <label>🎤 Мой микрофон: <span id="my-vol-txt">100%</span></label>
         <input type="range" id="my-volume" min="0" max="200" value="100">
     </div>
-    <button id="leave-btn" style="background:#eba0ac;margin-top:auto;">🚪 Покинуть комнату</button>
+
+    <button id="leave-btn" class="btn-leave">🚪 Покинуть комнату</button>
 </div>
 
 <div id="main-area">
     <div id="chat-window">
-        <div class="msg system">Добро пожаловать! Если нет звука — коснитесь экрана.</div>
+        <div class="msg system">
+            <span>💬 Чат готов. Если нет звука — коснитесь экрана.</span>
+        </div>
     </div>
+    
     <div id="input-area">
-        <input type="text" id="msg-input" placeholder="Сообщение..." disabled>
-        <button id="send-btn" disabled>📨</button>
+        <input type="text" id="msg-input" placeholder="Введите сообщение или ссылку на демку..." disabled>
+        <button id="send-btn" disabled style="width: auto;">📨 Отправить</button>
     </div>
 </div>
 
-<div id="audio-containers" style="display:none;"></div>
+<div id="audio-containers"></div>
 
 <script>
-    (async () => {
-        // ----- Хеширование имени комнаты -----
-        async function hashRoom(name, prefix) {
-            const clean = name.trim().toLowerCase();
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(clean));
-            const hashHex = Array.from(new Uint8Array(buf))
-                .map(b => b.toString(16).padStart(2,'0')).join('').substring(0,16);
-            return `rm_${prefix}_${hashHex}`;
+    // ============ Утилиты ============
+    const avatars = [
+        '🐱', '🐶', '🦊', '🐸', '🐵', '🐼', '🐨', '🐯',
+        '🦁', '🐮', '🐷', '🐰', '🐻', '🐔', '🐧', '🦄'
+    ];
+    
+    function getAvatar(seed) {
+        let hash = 0;
+        for (let i = 0; i < seed.length; i++) {
+            hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+            hash |= 0;
         }
+        return avatars[Math.abs(hash) % avatars.length];
+    }
 
-        // ----- DOM-элементы -----
-        const loginOverlay = document.getElementById('login-overlay');
-        const roomInput = document.getElementById('room-input');
-        const roomDisplay = document.getElementById('room-display');
-        const statusDiv = document.getElementById('status');
-        const peersCount = document.getElementById('peers-count');
-        const peersList = document.getElementById('peers-list');
-        const chatWindow = document.getElementById('chat-window');
-        const msgInput = document.getElementById('msg-input');
-        const sendBtn = document.getElementById('send-btn');
-        const audioContainers = document.getElementById('audio-containers');
-        const myVolSlider = document.getElementById('my-volume');
-        const myVolTxt = document.getElementById('my-vol-txt');
-        const leaveBtn = document.getElementById('leave-btn');
+    function getTime() {
+        const now = new Date();
+        return now.getHours().toString().padStart(2,'0') + ':' + 
+               now.getMinutes().toString().padStart(2,'0');
+    }
 
-        // ----- Состояние -----
-        let peer = null;
-        let localStream = null;
-        let audioCtx = null;
-        let gainNode = null;
-        let dataConns = [];        // data connections
-        let mediaCalls = [];       // media calls (только входящие/исходящие)
-        let isMega = false;
-        let amHost = false;
-        let myId = '';
-        let roomBaseName = '';
+    async function hashRoomName(name, prefix) {
+        const clean = name.trim().toLowerCase();
+        const msgBuffer = new TextEncoder().encode(clean);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+        return `rm_${prefix}_${hashHex}`;
+    }
 
-        // ----- Аудио-контекст (разблокировка) -----
-        function ensureAudioContext() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+    // ============ DOM элементы ============
+    const loginOverlay = document.getElementById('login-overlay');
+    const roomInput = document.getElementById('room-input');
+    const createRoomBtn = document.getElementById('create-room-btn');
+    const createMegaBtn = document.getElementById('create-mega-btn');
+    const joinRoomBtn = document.getElementById('join-room-btn');
+    const roomDisplay = document.getElementById('room-display');
+    const statusDisplay = document.getElementById('status');
+    const peersCount = document.getElementById('peers-count');
+    const peersList = document.getElementById('peers-list');
+    const chatWindow = document.getElementById('chat-window');
+    const msgInput = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+    const audioContainers = document.getElementById('audio-containers');
+    const myVolSlider = document.getElementById('my-volume');
+    const myVolTxt = document.getElementById('my-vol-txt');
+    const leaveBtn = document.getElementById('leave-btn');
+
+    // ============ Состояние ============
+    let peer = null;
+    let localAudioStream = null;
+    let audioContext = null;
+    let gainNode = null;
+    let dataConnections = [];
+    let mediaCalls = [];
+    let isMegaRoom = false;
+    let amIHost = false;
+    let myPeerId = '';
+    let myAvatar = '';
+
+    // ============ Аудио контекст ============
+    function ensureAudio() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-        document.addEventListener('click', ensureAudioContext, { once: true });
-        document.addEventListener('touchstart', ensureAudioContext, { once: true });
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+    }
 
-        // ----- Микрофон -----
-        async function getMic() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                ensureAudioContext();
-                const source = audioCtx.createMediaStreamSource(stream);
-                gainNode = audioCtx.createGain();
-                source.connect(gainNode);
-                const dest = audioCtx.createMediaStreamDestination();
-                gainNode.connect(dest);
-                localStream = dest.stream;
-                statusDiv.innerText = '🎤 Микрофон активен';
-                return true;
-            } catch (e) {
-                console.warn('Микрофон не доступен:', e);
-                statusDiv.innerText = '⚠️ Без микрофона';
-                return false;
+    // Разблокировка звука по первому взаимодействию
+    document.addEventListener('click', ensureAudio);
+    document.addEventListener('touchstart', ensureAudio);
+
+    // ============ Микрофон ============
+    async function getMicrophone() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }, 
+                video: false 
+            });
+            
+            ensureAudio();
+            const source = audioContext.createMediaStreamSource(stream);
+            gainNode = audioContext.createGain();
+            source.connect(gainNode);
+            
+            const destination = audioContext.createMediaStreamDestination();
+            gainNode.connect(destination);
+            
+            localAudioStream = destination.stream;
+            statusDisplay.innerText = '🎤 Микрофон готов';
+            return true;
+        } catch (err) {
+            console.warn('Микрофон не доступен:', err);
+            statusDisplay.innerText = '⚠️ Без микрофона';
+            return false;
+        }
+    }
+
+    // ============ Интерфейс ============
+    function updatePeersUI() {
+        const count = dataConnections.length + 1; // +1 это мы сами
+        peersCount.innerText = `👥 Участников: ${count}`;
+        
+        let html = `<div class="peer-item"><span class="peer-dot"></span> Вы ${myAvatar}</div>`;
+        dataConnections.forEach(conn => {
+            const peerShort = conn.peer.substring(0, 8);
+            const ava = getAvatar(conn.peer);
+            html += `<div class="peer-item"><span class="peer-dot"></span> ${peerShort}... ${ava}</div>`;
+        });
+        peersList.innerHTML = html;
+        
+        const hasPeers = dataConnections.length > 0;
+        msgInput.disabled = !hasPeers;
+        sendBtn.disabled = !hasPeers;
+    }
+
+    function addMessage(text, type, peerId = '') {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${type}`;
+        
+        if (type === 'system') {
+            msgDiv.innerHTML = `<span>${text}</span>`;
+        } else {
+            const ava = type === 'me' ? myAvatar : getAvatar(peerId);
+            const time = getTime();
+            
+            msgDiv.innerHTML = `
+                <div class="avatar">${ava}</div>
+                <div class="msg-content">
+                    <div>${escapeHtml(text)}</div>
+                    <div class="msg-time">${time}</div>
+                </div>
+            `;
+        }
+        
+        chatWindow.appendChild(msgDiv);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ============ Отправка сообщений ============
+    function sendMessage() {
+        const text = msgInput.value.trim();
+        if (!text || dataConnections.length === 0) return;
+        
+        const payload = { 
+            type: 'text', 
+            text: text,
+            from: myPeerId,
+            time: getTime()
+        };
+        
+        // Отправляем всем подключённым
+        dataConnections.forEach(conn => {
+            if (conn.open) {
+                conn.send(payload);
             }
+        });
+        
+        addMessage(text, 'me');
+        msgInput.value = '';
+    }
+
+    // Привязываем обработчики ОДИН раз
+    sendBtn.onclick = sendMessage;
+    msgInput.onkeypress = (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
         }
+    };
 
-        // ----- Обновление списка участников -----
-        function updatePeersUI() {
-            peersCount.innerText = `👥 Участников: ${dataConns.length + 1}`;
-            let html = '';
-            dataConns.forEach((conn, i) => {
-                html += `<div>🔹 ${conn.peer.substring(0, 12)}...</div>`;
-            });
-            peersList.innerHTML = html;
-            msgInput.disabled = dataConns.length === 0;
-            sendBtn.disabled = dataConns.length === 0;
+    // ============ Data Connection ============
+    function setupDataConnection(conn) {
+        // Проверяем, нет ли уже такого соединения
+        if (dataConnections.find(c => c.peer === conn.peer)) {
+            console.log('Дубликат соединения, пропускаем:', conn.peer);
+            return;
         }
-
-        // ----- Добавление сообщения в чат -----
-        function addMsg(text, type) {
-            const div = document.createElement('div');
-            div.className = `msg ${type}`;
-            div.innerText = text;
-            chatWindow.appendChild(div);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-
-        // ----- Отправка сообщения -----
-        function sendMessage() {
-            const text = msgInput.value.trim();
-            if (!text) return;
-            const payload = { type: 'text', text, from: myId };
-            dataConns.forEach(c => { if (c.open) c.send(payload); });
-            addMsg(text, 'me');
-            msgInput.value = '';
-        }
-
-        sendBtn.addEventListener('click', sendMessage);
-        msgInput.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
-
-        // ----- Обработка data-соединения -----
-        function setupDataConn(conn) {
-            dataConns.push(conn);
-            updatePeersUI();
-            addMsg(`🔗 Подключился новый участник`, 'system');
-
-            conn.on('data', data => {
-                if (data.type === 'text') {
-                    addMsg(data.text, 'friend');
-                    // Пересылаем остальным (только если хост в мега-комнате)
-                    if (amHost && isMega) {
-                        dataConns.forEach(c => {
-                            if (c !== conn && c.open) c.send(data);
-                        });
-                    }
-                }
-            });
-
-            conn.on('close', () => {
-                dataConns = dataConns.filter(c => c !== conn);
-                updatePeersUI();
-                addMsg(`🔌 Участник отключился`, 'system');
-            });
-
-            conn.on('error', err => console.error('Data error:', err));
-        }
-
-        // ----- Обработка медиа-звонка -----
-        function setupMediaCall(call) {
-            mediaCalls.push(call);
-            const audio = document.createElement('audio');
-            audio.autoplay = true;
-            audio.playsinline = true;
-            audio.controls = false;
-            audioContainers.appendChild(audio);
-
-            call.on('stream', remoteStream => {
-                audio.srcObject = remoteStream;
-                audio.play().catch(() => {});
-            });
-
-            call.on('close', () => {
-                mediaCalls = mediaCalls.filter(c => c !== call);
-                audio.remove();
-            });
-
-            call.on('error', err => console.error('Media error:', err));
-        }
-
-        // ----- Трансляция своего потока всем (для мега-комнат) -----
-        function broadcastMediaToAll() {
-            if (!localStream) return;
-            dataConns.forEach(conn => {
-                // Проверяем, нет ли уже звонка с этим пиром
-                const exists = mediaCalls.some(c => c.peer === conn.peer);
-                if (!exists) {
-                    const call = peer.call(conn.peer, localStream);
-                    setupMediaCall(call);
-                }
-            });
-        }
-
-        // ----- Инициализация PeerJS -----
-        function initPeer(myPeerId, hostPeerId = null) {
-            if (peer) peer.destroy();
-
-            peer = new Peer(myPeerId, {
-                config: {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
-                }
-            });
-
-            peer.on('open', async id => {
-                myId = id;
-                statusDiv.innerText = '🟢 В сети. ' + (amHost ? 'Ждём гостей...' : 'Подключаемся...');
-                await getMic();
-
-                if (!amHost && hostPeerId) {
-                    // Гость: подключаемся к хосту
-                    const conn = peer.connect(hostPeerId);
-                    setupDataConn(conn);
-                    if (localStream) {
-                        const call = peer.call(hostPeerId, localStream);
-                        setupMediaCall(call);
-                    }
-                }
-            });
-
-            peer.on('connection', conn => {
-                setupDataConn(conn);
-                // Хост: если есть микрофон, звоним новому гостю
-                if (amHost && localStream) {
-                    setTimeout(() => {
-                        const exists = mediaCalls.some(c => c.peer === conn.peer);
-                        if (!exists) {
-                            const call = peer.call(conn.peer, localStream);
-                            setupMediaCall(call);
+        
+        dataConnections.push(conn);
+        updatePeersUI();
+        
+        const peerShort = conn.peer.substring(0, 8);
+        addMessage(`🔗 Участник ${peerShort}... подключился`, 'system');
+        
+        conn.on('data', (data) => {
+            if (data.type === 'text') {
+                addMessage(data.text, 'friend', data.from || conn.peer);
+                
+                // Если хост в мега-комнате, пересылаем сообщение всем остальным
+                if (amIHost && isMegaRoom) {
+                    dataConnections.forEach(c => {
+                        if (c.peer !== conn.peer && c.open) {
+                            c.send(data);
                         }
+                    });
+                }
+            }
+        });
+        
+        conn.on('close', () => {
+            const peerShort = conn.peer.substring(0, 8);
+            dataConnections = dataConnections.filter(c => c.peer !== conn.peer);
+            updatePeersUI();
+            addMessage(`🔌 Участник ${peerShort}... отключился`, 'system');
+        });
+        
+        conn.on('error', (err) => {
+            console.error('Data connection error:', err);
+        });
+    }
+
+    // ============ Media Call ============
+    function setupMediaCall(call) {
+        // Проверяем дубликаты
+        if (mediaCalls.find(c => c.peer === call.peer)) {
+            console.log('Дубликат звонка, пропускаем:', call.peer);
+            return;
+        }
+        
+        mediaCalls.push(call);
+        
+        const audioElem = document.createElement('audio');
+        audioElem.autoplay = true;
+        audioElem.playsinline = true;
+        audioElem.controls = false;
+        audioContainers.appendChild(audioElem);
+        
+        call.on('stream', (remoteStream) => {
+            audioElem.srcObject = remoteStream;
+            audioElem.play().catch(e => {
+                console.log('Ожидание взаимодействия для воспроизведения звука');
+            });
+        });
+        
+        call.on('close', () => {
+            mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
+            audioElem.remove();
+        });
+        
+        call.on('error', (err) => {
+            console.error('Media call error:', err);
+        });
+    }
+
+    // ============ Звонок новому участнику (хост) ============
+    function callNewPeer(peerId) {
+        if (!localAudioStream) {
+            console.log('Нет локального аудиопотока для звонка');
+            return;
+        }
+        
+        // Проверяем, нет ли уже звонка с этим пиром
+        if (mediaCalls.find(c => c.peer === peerId)) {
+            return;
+        }
+        
+        const call = peer.call(peerId, localAudioStream);
+        setupMediaCall(call);
+    }
+
+    // ============ PeerJS инициализация ============
+    function initPeer(myId, hostId = null) {
+        // Убиваем старый peer если есть
+        if (peer) {
+            peer.destroy();
+        }
+        
+        peer = new Peer(myId, {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' }
+                ]
+            }
+            // Убираем дебаг в продакшене
+            // debug: 3
+        });
+        
+        peer.on('open', async (id) => {
+            myPeerId = id;
+            myAvatar = getAvatar(id);
+            statusDisplay.innerText = '🟢 Онлайн';
+            updatePeersUI();
+            
+            // Получаем микрофон
+            await getMicrophone();
+            
+            // Если гость — подключаемся к хосту
+            if (!amIHost && hostId) {
+                statusDisplay.innerText = '🔗 Подключение к хосту...';
+                
+                // Data connection
+                const conn = peer.connect(hostId, {
+                    reliable: true
+                });
+                setupDataConnection(conn);
+                
+                // Media call
+                if (localAudioStream) {
+                    setTimeout(() => {
+                        const call = peer.call(hostId, localAudioStream);
+                        setupMediaCall(call);
                     }, 500);
                 }
-            });
-
-            peer.on('call', call => {
-                if (localStream) call.answer(localStream);
-                else call.answer(); // отвечаем без потока
-                setupMediaCall(call);
-            });
-
-            peer.on('error', err => {
-                console.error('Peer error:', err);
-                statusDiv.innerText = '❌ Ошибка: ' + err.type;
-                if (err.type === 'peer-unavailable') {
-                    addMsg('⚠️ Хост не найден. Проверьте название комнаты.', 'system');
-                }
-            });
-
-            peer.on('disconnected', () => {
-                statusDiv.innerText = '🔴 Отключён. Переподключение...';
-                setTimeout(() => peer.reconnect(), 2000);
-            });
-        }
-
-        // ----- Старт сессии -----
-        async function startSession(role, mega) {
-            const name = roomInput.value.trim();
-            if (!name) return alert('Введите название комнаты!');
-            roomBaseName = name;
-            isMega = mega;
-            amHost = (role === 'host');
-            loginOverlay.style.display = 'none';
-            roomDisplay.innerText = name + (isMega ? ' 🔥MEGA' : '');
-            statusDiv.innerText = '⏳ Подготовка...';
-            addMsg(`Комната: ${name}`, 'system');
-
-            if (amHost) {
-                const hostId = await hashRoom(name, 'host');
-                initPeer(hostId);
-            } else {
-                const hostId = await hashRoom(name, 'host');
-                const guestId = (await hashRoom(name, 'guest')) + '_' + Math.random().toString(36).substring(2,6);
-                initPeer(guestId, hostId);
             }
-        }
-
-        // ----- Выход -----
-        function leaveRoom() {
-            mediaCalls.forEach(c => c.close());
-            dataConns.forEach(c => c.close());
-            if (peer) peer.destroy();
-            peer = null; localStream = null;
-            dataConns = []; mediaCalls = [];
-            audioContainers.innerHTML = '';
-            chatWindow.innerHTML = '<div class="msg system">Вы вышли из комнаты.</div>';
-            updatePeersUI();
-            loginOverlay.style.display = 'flex';
-            roomDisplay.innerText = '---';
-            statusDiv.innerText = 'Ожидание...';
-        }
-
-        leaveBtn.addEventListener('click', leaveRoom);
-
-        // ----- Регулировка громкости -----
-        myVolSlider.addEventListener('input', () => {
-            const val = myVolSlider.value;
-            myVolTxt.innerText = val + '%';
-            if (gainNode) gainNode.gain.value = val / 100;
         });
-
-        // ----- Кнопки логина -----
-        document.getElementById('create-room-btn').onclick = () => startSession('host', false);
-        document.getElementById('create-mega-btn').onclick = () => startSession('host', true);
-        document.getElementById('join-room-btn').onclick = () => startSession('guest', false);
-
-        // ----- Enter в поле комнаты -----
-        roomInput.addEventListener('keypress', e => {
-            if (e.key === 'Enter') startSession('guest', false);
+        
+        // Входящие соединения
+        peer.on('connection', (conn) => {
+            setupDataConnection(conn);
+            
+            // Если хост — звоним новому гостю
+            if (amIHost) {
+                setTimeout(() => {
+                    callNewPeer(conn.peer);
+                }, 500);
+            }
         });
+        
+        // Входящие звонки
+        peer.on('call', (call) => {
+            if (localAudioStream) {
+                call.answer(localAudioStream);
+            } else {
+                call.answer();
+            }
+            setupMediaCall(call);
+        });
+        
+        // Ошибки
+        peer.on('error', (err) => {
+            console.error('PeerJS error:', err);
+            if (err.type === 'peer-unavailable') {
+                statusDisplay.innerText = '❌ Комната не найдена';
+                addMessage('⚠️ Хост не в сети. Проверьте название комнаты.', 'system');
+            } else if (err.type === 'disconnected') {
+                statusDisplay.innerText = '🔴 Соединение потеряно';
+                addMessage('🔴 Соединение с сервером потеряно', 'system');
+            } else {
+                statusDisplay.innerText = '❌ Ошибка: ' + err.type;
+            }
+        });
+        
+        // Отключение от сигнального сервера
+        peer.on('disconnected', () => {
+            statusDisplay.innerText = '🔴 Отключён от сервера';
+            addMessage('🔴 Отключён от сигнального сервера. Попробуйте перезайти.', 'system');
+        });
+    }
 
-    })();
+    // ============ Старт сессии ============
+    async function startSession(role, megaMode) {
+        const roomName = roomInput.value.trim();
+        if (!roomName) {
+            alert('Введите название комнаты!');
+            return;
+        }
+        
+        isMegaRoom = megaMode;
+        amIHost = (role === 'host');
+        
+        loginOverlay.style.display = 'none';
+        roomDisplay.innerText = roomName + (isMegaRoom ? ' 🔥MEGA' : '');
+        statusDisplay.innerText = '⏳ Инициализация...';
+        
+        // Очищаем чат
+        chatWindow.innerHTML = '';
+        addMessage('⏳ Подготовка комнаты...', 'system');
+        
+        const randomId = Math.random().toString(36).substring(2, 6);
+        let myId = '';
+        let targetHostId = null;
+        
+        if (amIHost) {
+            myId = await hashRoomName(roomName, 'host');
+            statusDisplay.innerText = '🏠 Создаю комнату...';
+        } else {
+            targetHostId = await hashRoomName(roomName, 'host');
+            myId = (await hashRoomName(roomName, 'guest')) + '_' + randomId;
+            statusDisplay.innerText = '🔍 Ищу комнату...';
+        }
+        
+        initPeer(myId, targetHostId);
+    }
+
+    // ============ Выход из комнаты ============
+    function leaveRoom() {
+        // Закрываем все звонки
+        mediaCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
+        mediaCalls = [];
+        
+        // Закрываем все data соединения
+        dataConnections.forEach(conn => {
+            try { conn.close(); } catch(e) {}
+        });
+        dataConnections = [];
+        
+        // Убиваем peer
+        if (peer) {
+            peer.destroy();
+            peer = null;
+        }
+        
+        // Очищаем аудио
+        audioContainers.innerHTML = '';
+        localAudioStream = null;
+        
+        // Сбрасываем интерфейс
+        updatePeersUI();
+        chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли из комнаты</div>';
+        
+        loginOverlay.style.display = 'flex';
+        roomDisplay.innerText = '---';
+        statusDisplay.innerText = 'Ожидание...';
+    }
+
+    // ============ Громкость ============
+    myVolSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        myVolTxt.innerText = val + '%';
+        if (gainNode) {
+            gainNode.gain.value = val / 100;
+        }
+    });
+
+    // ============ Кнопки ============
+    createRoomBtn.addEventListener('click', () => startSession('host', false));
+    createMegaBtn.addEventListener('click', () => startSession('host', true));
+    joinRoomBtn.addEventListener('click', () => startSession('guest', false));
+    leaveBtn.addEventListener('click', leaveRoom);
+    
+    // Enter в поле ввода комнаты
+    roomInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            startSession('guest', false);
+        }
+    });
+
+    // ============ Авто-восстановление аудио ============
+    // Для мобильных устройств — разблокировка AudioContext
+    document.addEventListener('click', () => {
+        ensureAudio();
+        // Пробуем запустить все аудио элементы
+        const audios = audioContainers.querySelectorAll('audio');
+        audios.forEach(a => {
+            if (a.paused && a.srcObject) {
+                a.play().catch(() => {});
+            }
+        });
+    });
 </script>
+
 </body>
 </html>
