@@ -3,228 +3,379 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Чат по Никнеймам</title>
-    <!-- Подключаем твой локальный файл -->
+    <title>P2P МЕГА-Комнаты (Эксперимент до 15 человек)</title>
     <script src="peerjs.min.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', -apple-system, sans-serif; background-color: #1e1e2e; color: #cdd6f4; display: flex; height: 100vh; margin: 0; overflow: hidden; }
-        
-        #sidebar { width: 300px; background-color: #252538; padding: 20px; display: flex; flex-direction: column; border-right: 2px solid #313244; flex-shrink: 0; overflow-y: auto; }
-        #main-area { flex: 1; display: flex; flex-direction: column; background-color: #181825; height: 100%; }
-        
-        #chat-window { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        #input-area { padding: 15px; background-color: #313244; display: flex; gap: 10px; align-items: center; }
-        
-        .msg { padding: 10px 14px; border-radius: 8px; max-width: 75%; word-break: break-word; font-size: 0.95em; }
-        .msg.me { background-color: #89b4fa; color: #11111b; align-self: flex-end; }
-        .msg.friend { background-color: #45475a; color: #cdd6f4; align-self: flex-start; }
-        .msg img { max-width: 100%; border-radius: 6px; margin-top: 5px; display: block; }
-        
-        .nick-box { font-size: 1.1em; background: #11111b; padding: 12px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #a6e3a1; border: 1px solid #313244; }
-        input[type="text"] { flex: 1; padding: 12px; border: none; border-radius: 6px; background-color: #45475a; color: #fff; font-size: 1em; width: 100%; }
-        button { background-color: #a6e3a1; color: #11111b; border: none; padding: 12px 15px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.95em; }
-        button:disabled { background-color: #585b70; color: #7f849c; cursor: not-allowed; }
-        
-        .volume-control { margin: 15px 0; display: flex; flex-direction: column; gap: 8px; background: #181825; padding: 10px; border-radius: 6px; }
-        .volume-control label { font-size: 0.85em; color: #a6adc8; display: flex; justify-content: space-between; }
-        .volume-control input[type="range"] { width: 100%; accent-color: #a6e3a1; cursor: pointer; }
-
-        #video-container { display: none; padding: 10px; background: #11111b; gap: 10px; justify-content: center; align-items: center; border-bottom: 2px solid #313244; flex-wrap: wrap; }
-        .video-box { position: relative; background: #000; border-radius: 8px; overflow: hidden; display: flex; flex: 1; min-width: 240px; max-height: 250px; }
-        .video-box span { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.7); padding: 3px 8px; border-radius: 4px; font-size: 0.75em; z-index: 10; font-weight: bold; }
-        
-        video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-        
-        /* Модалка ввода ника при старте */
-        #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #11111b; display: flex; justify-content: center; align-items: center; z-index: 9999; }
-        .login-card { background: #252538; padding: 30px; border-radius: 12px; border: 1px solid #313244; width: 90%; max-width: 400px; text-align: center; }
+        * { 
+            box-sizing: border-box; 
+        }
+        body { 
+            font-family: 'Segoe UI', -apple-system, sans-serif; 
+            background-color: #1e1e2e; 
+            color: #cdd6f4; 
+            display: flex; 
+            height: 100vh; 
+            margin: 0; 
+            overflow: hidden; 
+        }
+        #sidebar { 
+            width: 300px; 
+            background-color: #252538; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            border-right: 2px solid #313244; 
+            flex-shrink: 0; 
+            overflow-y: auto; 
+        }
+        #main-area { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            background-color: #181825; 
+            height: 100%; 
+        }
+        #chat-window { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+        }
+        #input-area { 
+            padding: 15px; 
+            background-color: #313244; 
+            display: flex; 
+            gap: 10px; 
+            align-items: center; 
+        }
+        .msg { 
+            padding: 10px 14px; 
+            border-radius: 8px; 
+            max-width: 75%; 
+            word-break: break-word; 
+            font-size: 0.95em; 
+        }
+        .msg.me { 
+            background-color: #89b4fa; 
+            color: #11111b; 
+            align-self: flex-end; 
+        }
+        .msg.friend { 
+            background-color: #45475a; 
+            color: #cdd6f4; 
+            align-self: flex-start; 
+        }
+        .room-box { 
+            font-size: 1.1em; 
+            background: #11111b; 
+            padding: 12px; 
+            border-radius: 6px; 
+            text-align: center; 
+            font-weight: bold; 
+            margin-bottom: 15px; 
+            color: #f9e2af; 
+            border: 1px solid #313244; 
+        }
+        input[type="text"] { 
+            flex: 1; 
+            padding: 12px; 
+            border: none; 
+            border-radius: 6px; 
+            background-color: #45475a; 
+            color: #fff; 
+            font-size: 1em; 
+            width: 100%; 
+            margin-bottom: 10px; 
+        }
+        button { 
+            background-color: #a6e3a1; 
+            color: #11111b; 
+            border: none; 
+            padding: 12px 15px; 
+            font-weight: bold; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 0.95em; 
+            width: 100%; 
+            margin-bottom: 8px; 
+        }
+        button:disabled { 
+            background-color: #585b70; 
+            color: #7f849c; 
+            cursor: not-allowed; 
+        }
+        .volume-control { 
+            margin: 15px 0; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            background: #181825; 
+            padding: 10px; 
+            border-radius: 6px; 
+        }
+        .volume-control label { 
+            font-size: 0.85em; 
+            color: #a6adc8; 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        .volume-control input[type="range"] { 
+            width: 100%; 
+            accent-color: #a6e3a1; 
+            cursor: pointer; 
+        }
+        #login-overlay { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: #11111b; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 9999; 
+        }
+        .login-card { 
+            background: #252538; 
+            padding: 30px; 
+            border-radius: 12px; 
+            border: 1px solid #313244; 
+            width: 90%; 
+            max-width: 400px; 
+            text-align: center; 
+        }
+        .exp-btn { 
+            background-color: #f38ba8; 
+            color: #11111b; 
+        }
+        #audio-containers { 
+            display: none; 
+        }
     </style>
 </head>
 <body>
 
-<!-- Окно ввода ника при входе -->
 <div id="login-overlay">
     <div class="login-card">
-        <h2 style="margin-top: 0; color: #89b4fa;">Введите ваш никнейм</h2>
-        <p style="color: #a6adc8; font-size: 0.9em; margin-bottom: 20px;">Ник должен быть одинаковым у тебя и у друга (например, "pavel" или "колян")</p>
-        <input type="text" id="my-nickname-input" placeholder="Ваш ник..." style="margin-bottom: 15px; text-align: center;">
-        <button id="start-btn" style="width: 100%;">Войти в сеть</button>
+        <h2 style="margin-top: 0; color: #89b4fa;">P2P Лобби</h2>
+        <p style="color: #a6adc8; font-size: 0.9em; margin-bottom: 20px;">Введите название комнаты</p>
+        <input type="text" id="room-input" placeholder="Название комнаты..." style="text-align: center;">
+        
+        <button id="create-room-btn">Создать обычную (на двоих)</button>
+        <button id="create-mega-btn" class="exp-btn">🔥 Создать МЕГА-руму (до 15 чел)</button>
+        <button id="join-room-btn" style="background-color: #89b4fa;">Войти в комнату</button>
     </div>
 </div>
 
 <div id="sidebar">
-    <h3 style="margin: 0 0 5px 0; font-size: 0.9em; color: #a6adc8;">Ты вошел как:</h3>
-    <div class="nick-box" id="my-nick-display">---</div>
+    <h3 style="margin: 0 0 5px 0; font-size: 0.9em; color: #a6adc8;">Комната:</h3>
+    <div class="room-box" id="room-display">---</div>
     
-    <div id="status" style="color: #f9e2af; font-weight: bold; margin-bottom: 12px; font-size: 0.9em;">Ожидание ввода ника...</div>
-    
-    <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-        <input type="text" id="friend-nick-input" placeholder="Никнейм друга">
-        <button id="connect-btn" disabled>Подключиться к другу</button>
-    </div>
+    <div id="status" style="color: #a6e3a1; font-weight: bold; margin-bottom: 12px; font-size: 0.9em; word-break: break-all;">Ожидание...</div>
+    <div id="peers-count" style="font-size: 0.85em; color: #bac2de; margin-bottom: 10px;">Подключено игроков: 0</div>
 
     <div class="volume-control">
-        <label>Громкость друга: <span id="friend-vol-txt">100%</span></label>
-        <input type="range" id="friend-volume" min="0" max="200" value="100">
-        
         <label>Твой микрофон: <span id="my-vol-txt">100%</span></label>
         <input type="range" id="my-volume" min="0" max="300" value="100">
     </div>
-    
-    <button id="screen-btn" style="display: none; background-color: #f38ba8; width: 100%;">Транслировать экран</button>
-    <button id="stop-screen-btn" style="display: none; margin-top: 12px; width: 100%; background-color: #74c7ec;">Выключить демку</button>
 </div>
 
 <div id="main-area">
-    <div id="video-container">
-        <div class="video-box" id="friend-box">
-            <span>Демка друга</span>
-            <video id="remote-video" autoplay playsinline></video>
-        </div>
-        <div class="video-box" id="my-box" style="display: none;">
-            <span>Твоя демка</span>
-            <video id="local-video" autoplay playsinline muted></video>
-        </div>
-    </div>
-    
     <div id="chat-window">
         <div class="msg friend" style="align-self: center; background: none; color: #6c7086; text-align: center;">
-            Введите ник друга слева и нажмите «Подключиться».
+            Чат готов к работе.
         </div>
     </div>
     
     <div id="input-area">
-        <input type="text" id="msg-input" placeholder="Введите сообщение..." disabled>
-        <input type="file" id="file-input" accept="image/*" style="display: none;">
-        <button id="file-btn" disabled style="background-color: #f9e2af;">📷</button>
-        <button id="send-btn" disabled>Отправить</button>
+        <input type="text" id="msg-input" placeholder="Введите сообщение..." disabled style="margin-bottom:0;">
+        <button id="send-btn" disabled style="width: auto; margin-bottom:0;">Отправить</button>
     </div>
 </div>
 
-<audio id="remote-audio" autoplay playsinline></audio>
+<div id="audio-containers"></div>
 
 <script>
-    // Хэш-функция для превращения любого текста/языка в безопасный ID для PeerJS
-    async function generatePeerId(nickname) {
-        const clean = nickname.trim().toLowerCase();
+    async function hashRoomName(name, prefix) {
+        const clean = name.trim().toLowerCase();
         const msgBuffer = new TextEncoder().encode(clean);
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 20);
-        return `room_${hashHex}`; // Уникальный префикс + 20 символов хэша
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+        return `rm_${prefix}_${hashHex}`;
     }
 
     const peerConfig = {
-        config: {
+        config: { 
             'iceServers': [
-                { 'urls': 'stun:stun.l.google.com:19302' },
-                { 'urls': 'stun:stun1.l.google.com:19302' },
-                { 'urls': 'stun:stun2.l.google.com:19302' }
-            ]
+                { 'urls': 'stun:stun.l.google.com:19302' }, 
+                { 'urls': 'stun:stun1.l.google.com:19302' }
+            ] 
         }
     };
 
     let peer = null;
     let localAudioStream = null;
-    let currentDataConnection = null;
-    let currentMediaCall = null;
-    let screenStream = null;
     let audioContext = null;
-    let gainNode = null; 
+    let gainNode = null;
+    let connections = []; 
+    let isMegaRoom = false;
 
-    // Элементы авторизации
     const loginOverlay = document.getElementById('login-overlay');
-    const myNicknameInput = document.getElementById('my-nickname-input');
-    const startBtn = document.getElementById('start-btn');
-    const myNickDisplay = document.getElementById('my-nick-display');
-
-    // Остальные элементы
+    const roomInput = document.getElementById('room-input');
+    const createRoomBtn = document.getElementById('create-room-btn');
+    const createMegaBtn = document.getElementById('create-mega-btn');
+    const joinRoomBtn = document.getElementById('join-room-btn');
+    const roomDisplay = document.getElementById('room-display');
     const statusDisplay = document.getElementById('status');
-    const friendNickInput = document.getElementById('friend-nick-input');
-    const connectBtn = document.getElementById('connect-btn');
+    const peersCount = document.getElementById('peers-count');
     const chatWindow = document.getElementById('chat-window');
     const msgInput = document.getElementById('msg-input');
     const sendBtn = document.getElementById('send-btn');
-    const fileInput = document.getElementById('file-input');
-    const fileBtn = document.getElementById('file-btn');
-    const screenBtn = document.getElementById('screen-btn');
-    const stopScreenBtn = document.getElementById('stop-screen-btn');
-    const remoteVideo = document.getElementById('remote-video');
-    const localVideo = document.getElementById('local-video');
-    const videoContainer = document.getElementById('video-container');
-    const myBox = document.getElementById('my-box');
-    const remoteAudio = document.getElementById('remote-audio');
-    const friendVolSlider = document.getElementById('friend-volume');
-    const friendVolTxt = document.getElementById('friend-vol-txt');
+    const audioContainers = document.getElementById('audio-containers');
     const myVolSlider = document.getElementById('my-volume');
     const myVolTxt = document.getElementById('my-vol-txt');
 
-    // Кнопка входа по нику
-    startBtn.addEventListener('click', async () => {
-        const nick = myNicknameInput.value.trim();
-        if (!nick) return alert("Введите нормальный ник!");
+    createRoomBtn.addEventListener('click', () => startSession("host", false));
+    createMegaBtn.addEventListener('click', () => startSession("host", true));
+    joinRoomBtn.addEventListener('click', () => startSession("guest", false));
+
+    async function startSession(type, megaMode) {
+        const rName = roomInput.value.trim();
+        if (!rName) return alert("Введите имя комнаты!");
         
+        isMegaRoom = megaMode;
         loginOverlay.style.display = 'none';
-        myNickDisplay.innerText = nick;
-        statusDisplay.innerText = "Генерация защищенного ID...";
+        roomDisplay.innerText = rName + (isMegaRoom ? " (MEGA)" : "");
+        statusDisplay.innerText = "Запуск сессии...";
+
+        const randomId = Math.random().toString(36).substring(2, 6);
+        let myPeerId = "";
         
-        // Получаем хэшированный ID из ника
-        const finalPeerId = await generatePeerId(nick);
-        initPeer(finalPeerId);
-    });
+        if (type === "host") {
+            myPeerId = await hashRoomName(rName, "host");
+            statusDisplay.innerText = "Создано лобби. Ожидание игроков...";
+        } else {
+            myPeerId = (await hashRoomName(rName, "guest")) + "_" + randomId;
+            statusDisplay.innerText = "Подключение к лобби...";
+        }
 
-    myNicknameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') startBtn.click(); });
+        initPeer(myPeerId, type === "host", rName);
+    }
 
-    function initPeer(generatedId) {
-        // Создаем пира со СВОИМ фиксированным ID на основе ника
-        peer = new Peer(generatedId, peerConfig);
+    function initPeer(myId, isHost, originalRoomName) {
+        peer = new Peer(myId, peerConfig);
 
-        peer.on('open', (id) => {
-            statusDisplay.innerText = "Доступ к микрофону...";
-            requestMicrophone();
+        peer.on('open', async () => {
+            await requestMicrophone();
+            
+            if (!isHost) {
+                const targetHostId = await hashRoomName(originalRoomName, "host");
+                const conn = peer.connect(targetHostId);
+                setupDataConnection(conn);
+                
+                if (localAudioStream) {
+                    peer.call(targetHostId, localAudioStream);
+                }
+            }
+        });
+
+        peer.on('connection', (conn) => {
+            setupDataConnection(conn);
+            if (isHost && isMegaRoom) {
+                broadcast({ type: 'text', text: `Система: Новый игрок подключился к лобби.` });
+            }
+        });
+
+        peer.on('call', (call) => {
+            call.answer(localAudioStream);
+            
+            const audioElem = document.createElement('audio');
+            audioElem.autoplay = true;
+            audioElem.playsinline = true;
+            audioContainers.appendChild(audioElem);
+            
+            call.on('stream', (remoteStream) => {
+                audioElem.srcObject = remoteStream;
+            });
         });
 
         peer.on('error', (err) => {
-            if (err.type === 'unavailable-id') {
-                alert("Этот ник уже занят кем-то в сети! Перезагрузите страницу и введите другой.");
-                location.reload();
+            console.error(err);
+            statusDisplay.innerText = "Ошибка: " + err.type;
+        });
+    }
+
+    async function requestMicrophone() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            localAudioStream = stream;
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            gainNode = audioContext.createGain();
+            source.connect(gainNode);
+            const destination = audioContext.createMediaStreamDestination();
+            gainNode.connect(destination);
+            localAudioStream = destination.stream;
+            statusDisplay.innerText = "В сети. Готов к общению.";
+        } catch (err) {
+            statusDisplay.innerText = "Микрофон недоступен.";
+        }
+    }
+
+    function setupDataConnection(conn) {
+        connections.push(conn);
+        msgInput.disabled = false;
+        sendBtn.disabled = false;
+        
+        peersCount.innerText = "Подключено игроков: " + connections.length;
+        statusDisplay.innerText = "Активное лобби";
+
+        conn.on('data', (data) => {
+            if (data.type === 'text') {
+                appendMessage(data.text, 'friend');
+                if (isMegaRoom && peer.id.includes("_host_")) {
+                    connections.forEach(c => {
+                        if (c.peer !== conn.peer) c.send(data);
+                    });
+                }
             }
-            if (currentDataConnection && currentDataConnection.open) return;
-            statusDisplay.innerText = "Ошибка сети.";
         });
 
-        peer.on('disconnected', () => { console.log("P2P автономен."); });
+        conn.on('close', () => {
+            connections = connections.filter(c => c.peer !== conn.peer);
+            peersCount.innerText = "Подключено игроков: " + connections.length;
+            if (connections.length === 0) statusDisplay.innerText = "Все отключились.";
+        });
     }
 
-    function requestMicrophone() {
-        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-            .then(stream => {
-                localAudioStream = stream;
-                try {
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const source = audioContext.createMediaStreamSource(stream);
-                    gainNode = audioContext.createGain();
-                    source.connect(gainNode);
-                    const destination = audioContext.createMediaStreamDestination();
-                    gainNode.connect(destination);
-                    localAudioStream = destination.stream;
-                } catch(e) { console.error(e); }
-
-                statusDisplay.innerText = "В сети. Готов к подключению.";
-                connectBtn.disabled = false;
-            }).catch(err => {
-                statusDisplay.innerText = "Без микрофона (только чат)";
-                connectBtn.disabled = false;
-            });
+    function broadcast(data) {
+        connections.forEach(c => {
+            if (c.open) c.send(data);
+        });
     }
 
-    // Регулировки звука
-    friendVolSlider.addEventListener('input', (e) => {
-        const val = e.target.value;
-        friendVolTxt.innerText = val + '%';
-        remoteAudio.volume = val / 100;
-    });
+    function sendMsg() {
+        const text = msgInput.value.trim();
+        if (!text) return;
+        
+        const payload = { type: 'text', text: text };
+        
+        if (isMegaRoom) {
+            broadcast(payload);
+        } else if (connections[0]) {
+            connections[0].send(payload);
+        }
+        
+        appendMessage(text, 'me');
+        msgInput.value = '';
+    }
+
+    sendBtn.addEventListener('click', sendMsg);
+    msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
 
     myVolSlider.addEventListener('input', (e) => {
         const val = e.target.value;
@@ -232,136 +383,10 @@
         if (gainNode) gainNode.gain.value = val / 100;
     });
 
-    function setupDataConnection(conn) {
-        currentDataConnection = conn;
-        msgInput.disabled = false;
-        sendBtn.disabled = false;
-        fileBtn.disabled = false;
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) screenBtn.style.display = 'block';
-        
-        statusDisplay.innerText = "Связь установлена!";
-        chatWindow.innerHTML = '<div class="msg friend" style="align-self: center; background: none; color: #a6e3a1;">Успешное подключение! Канал связи открыт.</div>';
-
-        setTimeout(() => { if (peer && !peer.disconnected) peer.disconnect(); }, 3000);
-
-        conn.on('data', (data) => {
-            if (data.type === 'text') appendMessage(data.text, 'friend');
-            else if (data.type === 'image') appendMessage(data.text, 'friend', data.img);
-        });
-
-        conn.on('close', () => {
-            statusDisplay.innerText = "Связь разорвана.";
-            msgInput.disabled = true; sendBtn.disabled = true; fileBtn.disabled = true;
-            screenBtn.style.display = 'none'; stopScreenBtn.style.display = 'none';
-        });
-    }
-
-    // Ловим входящие
-    peer.on('connection', (conn) => setupDataConnection(conn));
-    peer.on('call', (call) => {
-        currentMediaCall = call;
-        call.answer(localAudioStream);
-        call.on('stream', (remoteStream) => {
-            if (remoteStream.getVideoTracks().length > 0) {
-                videoContainer.style.display = 'flex';
-                remoteVideo.srcObject = remoteStream;
-            } else {
-                remoteAudio.srcObject = remoteStream;
-                remoteAudio.volume = friendVolSlider.value / 100;
-            }
-        });
-    });
-
-    // Кнопка ручного подключения к другу по его НИКУ
-    connectBtn.addEventListener('click', async () => {
-        const fNick = friendNickInput.value.trim();
-        if (!fNick) return alert("Введите ник друга!");
-
-        statusDisplay.innerText = "Вычисляю ID и подключаюсь...";
-        // Генерируем ID друга по его нику
-        const targetPeerId = await generatePeerId(fNick);
-
-        const conn = peer.connect(targetPeerId);
-        conn.on('open', () => setupDataConnection(conn));
-
-        if (localAudioStream) {
-            const call = peer.call(targetPeerId, localAudioStream);
-            currentMediaCall = call;
-            call.on('stream', (remoteStream) => {
-                remoteAudio.srcObject = remoteStream;
-                remoteAudio.volume = friendVolSlider.value / 100;
-            });
-        }
-    });
-
-    // Демка экрана
-    screenBtn.addEventListener('click', async () => {
-        try {
-            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-            videoContainer.style.display = 'flex';
-            myBox.style.display = 'flex';
-            localVideo.srcObject = screenStream;
-
-            const combinedStream = new MediaStream([
-                ...screenStream.getVideoTracks(),
-                ...(localAudioStream ? localAudioStream.getAudioTracks() : [])
-            ]);
-
-            const targetPeerId = currentDataConnection.peer;
-            if (currentMediaCall) currentMediaCall.close();
-            
-            currentMediaCall = peer.call(targetPeerId, combinedStream);
-            screenBtn.style.display = 'none';
-            stopScreenBtn.style.display = 'block';
-            screenStream.getVideoTracks()[0].onended = () => stopScreen();
-        } catch (err) { console.error(err); }
-    });
-
-    function stopScreen() {
-        if (screenStream) screenStream.getTracks().forEach(track => track.stop());
-        myBox.style.display = 'none';
-        if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().length === 0) videoContainer.style.display = 'none';
-        screenBtn.style.display = 'block';
-        stopScreenBtn.style.display = 'none';
-        
-        const targetPeerId = currentDataConnection.peer;
-        if (currentMediaCall) currentMediaCall.close();
-        if (localAudioStream) currentMediaCall = peer.call(targetPeerId, localAudioStream);
-    }
-    stopScreenBtn.addEventListener('click', stopScreen);
-
-    // Отправка сообщений
-    function sendMsg() {
-        const text = msgInput.value.trim();
-        if (!text || !currentDataConnection) return;
-        currentDataConnection.send({ type: 'text', text: text });
-        appendMessage(text, 'me');
-        msgInput.value = '';
-    }
-    sendBtn.addEventListener('click', sendMsg);
-    msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
-
-    fileBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file || !currentDataConnection) return;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            currentDataConnection.send({ type: 'image', text: `Изображение: ${file.name}`, img: event.target.result });
-            appendMessage(`Изображение: ${file.name}`, 'me', event.target.result);
-        };
-        reader.readAsDataURL(file);
-    });
-
-    function appendMessage(text, type, imgData = null) {
+    function appendMessage(text, type) {
         const msg = document.createElement('div');
         msg.classList.add('msg', type);
-        if (text) msg.innerText = text;
-        if (imgData) {
-            const img = document.createElement('img');
-            img.src = imgData;
-            msg.appendChild(img);
-        }
+        msg.innerText = text;
         chatWindow.appendChild(msg);
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
