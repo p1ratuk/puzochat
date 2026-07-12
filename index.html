@@ -37,6 +37,7 @@
             flex-direction: column; 
             background-color: #181825; 
             height: 100%; 
+            position: relative;
         }
         #chat-window { 
             flex: 1; 
@@ -105,6 +106,50 @@
             opacity: 0.6;
             margin-top: 2px;
         }
+        /* Стрим экрана */
+        #screen-share-container {
+            display: none;
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            max-height: 50%;
+        }
+        #screen-share-container.active {
+            display: block;
+        }
+        #screen-share-container video {
+            width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+        #screen-share-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            z-index: 10;
+        }
+        #stop-screen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #f38ba8;
+            color: #11111b;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            font-weight: bold;
+            z-index: 10;
+        }
         .room-box { 
             font-size: 1.1em; 
             background: #11111b; 
@@ -147,6 +192,18 @@
             color: #7f849c; 
             cursor: not-allowed; 
             transform: none;
+        }
+        .btn-screen {
+            background-color: #cba6f7;
+            width: 100%;
+        }
+        .btn-screen.active {
+            background-color: #f38ba8;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
         .volume-control { 
             margin: 10px 0; 
@@ -256,6 +313,9 @@
         <p style="font-size:0.7em;color:#585b70;margin-top:8px;">
             💡 Совет: создавайте комнату на ПК, заходите с телефона
         </p>
+        <p style="font-size:0.7em;color:#585b70;">
+            🖥️ Демки — шеринг экрана. Работает на ПК и Android
+        </p>
     </div>
 </div>
 
@@ -277,6 +337,7 @@
         <input type="range" id="my-volume" min="0" max="200" value="100">
     </div>
 
+    <button id="screen-share-btn" class="btn-screen">🖥️ Демка (показать экран)</button>
     <button id="refresh-audio-btn" class="btn-refresh">🔄 Переподключить звук</button>
     <button id="leave-btn" class="btn-leave">🚪 Покинуть комнату</button>
     
@@ -284,15 +345,20 @@
 </div>
 
 <div id="main-area">
+    <div id="screen-share-container">
+        <div id="screen-share-label">📺 Демка</div>
+        <button id="stop-screen-btn">❌ Остановить</button>
+        <video id="screen-video" autoplay playsinline muted></video>
+    </div>
     <div id="chat-window">
         <div class="msg system">
-            <span>💬 Чат готов. Если нет звука — нажмите "Переподключить звук"</span>
+            <span>💬 Чат готов. Можно показывать экран (демки) через кнопку в меню слева!</span>
         </div>
     </div>
     
     <div id="input-area">
-        <input type="text" id="msg-input" placeholder="Введите сообщение или ссылку на демку..." disabled>
-        <button id="send-btn" disabled>📨 Отправить</button>
+        <input type="text" id="msg-input" placeholder="Введите сообщение...">
+        <button id="send-btn">📨 Отправить</button>
     </div>
 </div>
 
@@ -348,19 +414,27 @@
     const leaveBtn = document.getElementById('leave-btn');
     const refreshAudioBtn = document.getElementById('refresh-audio-btn');
     const debugInfo = document.getElementById('debug-info');
+    const screenShareBtn = document.getElementById('screen-share-btn');
+    const screenShareContainer = document.getElementById('screen-share-container');
+    const screenVideo = document.getElementById('screen-video');
+    const stopScreenBtn = document.getElementById('stop-screen-btn');
+    const screenShareLabel = document.getElementById('screen-share-label');
 
     // ============ Состояние ============
     let peer = null;
     let localAudioStream = null;
+    let localScreenStream = null;
     let audioContext = null;
     let gainNode = null;
     let dataConnections = [];
-    let mediaCalls = [];
+    let mediaCalls = [];      // аудио звонки
+    let screenCalls = [];     // звонки с экраном
     let isMegaRoom = false;
     let amIHost = false;
     let myPeerId = '';
     let myAvatar = '';
-    let hostPeerId = null; // ID хоста (нужен гостю для переподключения)
+    let hostPeerId = null;
+    let isSharingScreen = false;
 
     // ============ Аудио контекст ============
     function ensureAudio() {
@@ -372,7 +446,6 @@
         }
     }
 
-    // Разблокировка звука по первому взаимодействию
     document.addEventListener('click', ensureAudio);
     document.addEventListener('touchstart', ensureAudio);
 
@@ -413,6 +486,124 @@
         debugInfo.innerText = msg;
     }
 
+    // ============ Шеринг экрана ============
+    async function startScreenShare() {
+        try {
+            // Пробуем получить экран с аудио (для вкладок)
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30 }
+                },
+                audio: true // Захват звука с вкладки если есть
+            });
+            
+            localScreenStream = stream;
+            screenVideo.srcObject = stream;
+            screenShareContainer.classList.add('active');
+            screenShareBtn.classList.add('active');
+            screenShareBtn.innerText = '🖥️ Идёт демка... (нажми чтобы остановить)';
+            isSharingScreen = true;
+            
+            // Отправляем экран всем подключённым
+            broadcastScreen(stream);
+            
+            // Если пользователь остановил шаринг через браузер
+            stream.getVideoTracks()[0].addEventListener('ended', () => {
+                stopScreenShare();
+            });
+            
+            addMessage('🖥️ Вы запустили демку (шеринг экрана)', 'system');
+            debug('Шеринг экрана запущен');
+            
+        } catch (err) {
+            console.error('Ошибка шеринга экрана:', err);
+            debug('Ошибка шеринга: ' + err.message);
+            addMessage('❌ Не удалось запустить демку: ' + err.message, 'system');
+        }
+    }
+
+    function stopScreenShare() {
+        if (localScreenStream) {
+            localScreenStream.getTracks().forEach(track => track.stop());
+            localScreenStream = null;
+        }
+        
+        // Закрываем все screen calls
+        screenCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
+        screenCalls = [];
+        
+        screenVideo.srcObject = null;
+        screenShareContainer.classList.remove('active');
+        screenShareBtn.classList.remove('active');
+        screenShareBtn.innerText = '🖥️ Демка (показать экран)';
+        isSharingScreen = false;
+        
+        addMessage('🖥️ Демка остановлена', 'system');
+        debug('Шеринг экрана остановлен');
+    }
+
+    function broadcastScreen(stream) {
+        // Отправляем экран всем data соединениям
+        dataConnections.forEach(conn => {
+            // Проверяем, нет ли уже screen call с этим пиром
+            const existingCall = screenCalls.find(c => c.peer === conn.peer);
+            if (!existingCall && peer) {
+                const call = peer.call(conn.peer, stream);
+                setupScreenCall(call, conn.peer);
+            }
+        });
+    }
+
+    function setupScreenCall(call, peerId) {
+        screenCalls.push(call);
+        const peerShort = peerId.substring(0, 8);
+        debug('Screen call установлен с: ' + peerShort);
+        
+        call.on('close', () => {
+            screenCalls = screenCalls.filter(c => c.peer !== peerId);
+            debug('Screen call закрыт: ' + peerShort);
+        });
+        
+        call.on('error', (err) => {
+            debug('Ошибка screen call: ' + err.message);
+        });
+    }
+
+    // При получении screen stream от другого участника
+    function receiveScreenStream(stream, peerId) {
+        const peerShort = peerId.substring(0, 8);
+        
+        // Создаём новый video элемент для входящего стрима
+        screenShareLabel.innerText = `📺 Демка от ${peerShort}...`;
+        screenVideo.srcObject = stream;
+        screenShareContainer.classList.add('active');
+        
+        // Если стрим заканчивается
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+            screenVideo.srcObject = null;
+            screenShareContainer.classList.remove('active');
+            screenShareLabel.innerText = '📺 Демка';
+            addMessage(`🖥️ Демка от ${peerShort}... закончилась`, 'system');
+        });
+        
+        addMessage(`🖥️ ${peerShort}... показывает демку!`, 'system');
+        debug('Получен screen stream от: ' + peerShort);
+    }
+
+    screenShareBtn.addEventListener('click', () => {
+        if (isSharingScreen) {
+            stopScreenShare();
+        } else {
+            startScreenShare();
+        }
+    });
+
+    stopScreenBtn.addEventListener('click', stopScreenShare);
+
     // ============ Интерфейс ============
     function updatePeersUI() {
         const count = dataConnections.length + 1;
@@ -423,14 +614,12 @@
             const peerShort = conn.peer.substring(0, 8);
             const ava = getAvatar(conn.peer);
             const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
+            const hasScreen = screenCalls.some(c => c.peer === conn.peer);
             const audioIcon = hasAudio ? '🔊' : '🔇';
-            html += `<div class="peer-item"><span class="peer-dot"></span> ${peerShort}... ${ava} ${audioIcon}</div>`;
+            const screenIcon = hasScreen ? ' 🖥️' : '';
+            html += `<div class="peer-item"><span class="peer-dot"></span> ${peerShort}... ${ava} ${audioIcon}${screenIcon}</div>`;
         });
         peersList.innerHTML = html;
-        
-        const hasPeers = dataConnections.length > 0;
-        msgInput.disabled = !hasPeers;
-        sendBtn.disabled = !hasPeers;
     }
 
     function addMessage(text, type, peerId = '') {
@@ -465,7 +654,7 @@
     // ============ Отправка сообщений ============
     function sendMessage() {
         const text = msgInput.value.trim();
-        if (!text || dataConnections.length === 0) return;
+        if (!text) return;
         
         const payload = { 
             type: 'text', 
@@ -482,6 +671,10 @@
         
         addMessage(text, 'me');
         msgInput.value = '';
+        
+        if (dataConnections.length === 0) {
+            addMessage('⚠️ Нет подключённых участников. Сообщение видно только вам.', 'system');
+        }
     }
 
     sendBtn.onclick = sendMessage;
@@ -503,6 +696,14 @@
         addMessage(`🔗 Участник ${peerShort}... подключился`, 'system');
         debug('Data соединение установлено: ' + peerShort);
         
+        // Если мы шарим экран — отправляем новому участнику
+        if (isSharingScreen && localScreenStream && peer) {
+            setTimeout(() => {
+                const call = peer.call(conn.peer, localScreenStream);
+                setupScreenCall(call, conn.peer);
+            }, 500);
+        }
+        
         conn.on('data', (data) => {
             if (data.type === 'text') {
                 addMessage(data.text, 'friend', data.from || conn.peer);
@@ -521,16 +722,30 @@
             const peerShort = conn.peer.substring(0, 8);
             dataConnections = dataConnections.filter(c => c.peer !== conn.peer);
             
-            // Удаляем соответствующий медиа-звонок
-            const callToRemove = mediaCalls.find(c => c.peer === conn.peer);
-            if (callToRemove) {
-                try { callToRemove.close(); } catch(e) {}
+            // Закрываем audio call
+            const audioCall = mediaCalls.find(c => c.peer === conn.peer);
+            if (audioCall) {
+                try { audioCall.close(); } catch(e) {}
                 mediaCalls = mediaCalls.filter(c => c.peer !== conn.peer);
+            }
+            
+            // Закрываем screen call
+            const screenCall = screenCalls.find(c => c.peer === conn.peer);
+            if (screenCall) {
+                try { screenCall.close(); } catch(e) {}
+                screenCalls = screenCalls.filter(c => c.peer !== conn.peer);
             }
             
             updatePeersUI();
             addMessage(`🔌 Участник ${peerShort}... отключился`, 'system');
             debug('Data соединение закрыто: ' + peerShort);
+            
+            // Проверяем, не остался ли включённым чужой экран
+            if (screenVideo.srcObject && screenCalls.length === 0 && !isSharingScreen) {
+                screenVideo.srcObject = null;
+                screenShareContainer.classList.remove('active');
+                screenShareLabel.innerText = '📺 Демка';
+            }
         });
         
         conn.on('error', (err) => {
@@ -538,11 +753,10 @@
         });
     }
 
-    // ============ Media Call ============
+    // ============ Media Call (аудио) ============
     function setupMediaCall(call) {
         if (mediaCalls.find(c => c.peer === call.peer)) {
             debug('Дубликат media звонка: ' + call.peer);
-            // Закрываем старый
             const old = mediaCalls.find(c => c.peer === call.peer);
             try { old.close(); } catch(e) {}
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
@@ -565,15 +779,12 @@
             debug('Поток получен от: ' + peerShort);
             audioElem.srcObject = remoteStream;
             
-            // Принудительно запускаем воспроизведение
             const playPromise = audioElem.play();
             if (playPromise) {
                 playPromise.then(() => {
                     debug('Аудио играет от: ' + peerShort);
-                    addMessage(`🔊 Звук от ${peerShort}... работает`, 'system');
                 }).catch(e => {
                     debug('Ожидание клика для звука от: ' + peerShort);
-                    addMessage(`👆 Коснитесь экрана для включения звука`, 'system');
                 });
             }
         });
@@ -590,7 +801,6 @@
         });
     }
 
-    // ============ Звонок пиру ============
     function callPeer(peerId) {
         if (!localAudioStream) {
             debug('Нет микрофона для звонка к: ' + peerId);
@@ -602,7 +812,6 @@
             return null;
         }
         
-        // Закрываем старый звонок если есть
         const oldCall = mediaCalls.find(c => c.peer === peerId);
         if (oldCall) {
             try { oldCall.close(); } catch(e) {}
@@ -615,20 +824,16 @@
         return call;
     }
 
-    // ============ Переподключение всего звука ============
     function refreshAllAudio() {
         debug('Переподключение звука...');
         
-        // Закрываем все текущие звонки
         mediaCalls.forEach(call => {
             try { call.close(); } catch(e) {}
         });
         mediaCalls = [];
         
-        // Очищаем аудио элементы
         audioContainers.innerHTML = '';
         
-        // Если хост — звоним всем гостям
         if (amIHost) {
             dataConnections.forEach(conn => {
                 setTimeout(() => {
@@ -637,7 +842,6 @@
             });
             addMessage('🔄 Хост переподключает звук всем участникам...', 'system');
         } 
-        // Если гость — звоним хосту
         else if (hostPeerId) {
             setTimeout(() => {
                 const call = callPeer(hostPeerId);
@@ -645,6 +849,18 @@
                     addMessage('🔄 Переподключение звука к хосту...', 'system');
                 }
             }, 300);
+        }
+        
+        // Переподключаем также скриншеринг если активен
+        if (isSharingScreen && localScreenStream) {
+            screenCalls.forEach(call => {
+                try { call.close(); } catch(e) {}
+            });
+            screenCalls = [];
+            
+            setTimeout(() => {
+                broadcastScreen(localScreenStream);
+            }, 500);
         }
         
         updatePeersUI();
@@ -666,7 +882,6 @@
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
-                    // Добавляем TURN сервер для сложных NAT
                     {
                         urls: 'turn:openrelay.metered.ca:80',
                         username: 'openrelayproject',
@@ -691,19 +906,16 @@
             
             await getMicrophone();
             
-            // Если гость — подключаемся к хосту
             if (!amIHost && hostId) {
                 hostPeerId = hostId;
                 statusDisplay.innerText = '🔗 Подключение к хосту...';
                 debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
                 
-                // Data connection
                 const conn = peer.connect(hostId, {
                     reliable: true
                 });
                 setupDataConnection(conn);
                 
-                // Media call — гость звонит хосту
                 if (localAudioStream) {
                     setTimeout(() => {
                         debug('Гость звонит хосту');
@@ -714,13 +926,10 @@
             }
         });
         
-        // Входящие соединения (для хоста)
         peer.on('connection', (conn) => {
             debug('Входящее соединение: ' + conn.peer.substring(0, 16));
             setupDataConnection(conn);
             
-            // Хост НЕ звонит сразу — ждём звонка от гостя
-            // Но если через 2 секунды звонка нет — хост звонит сам
             if (amIHost) {
                 setTimeout(() => {
                     const hasCall = mediaCalls.some(c => c.peer === conn.peer);
@@ -732,19 +941,30 @@
             }
         });
         
-        // Входящие звонки (для хоста И гостя)
         peer.on('call', (call) => {
             debug('Входящий звонок от: ' + call.peer.substring(0, 16));
             
+            // Отвечаем на звонок
             if (localAudioStream) {
                 call.answer(localAudioStream);
             } else {
                 call.answer();
             }
-            setupMediaCall(call);
+            
+            // Проверяем, это аудио или скриншеринг
+            // PeerJS не различает типы, поэтому проверяем по наличию video треков в будущем
+            call.on('stream', (remoteStream) => {
+                // Если есть видео треки — это скриншеринг
+                if (remoteStream.getVideoTracks().length > 0) {
+                    receiveScreenStream(remoteStream, call.peer);
+                    setupScreenCall(call, call.peer);
+                } else {
+                    // Иначе — аудио звонок
+                    setupMediaCall(call);
+                }
+            });
         });
         
-        // Ошибки
         peer.on('error', (err) => {
             console.error('PeerJS error:', err);
             debug('Ошибка PeerJS: ' + err.type + ' - ' + (err.message || ''));
@@ -809,10 +1029,18 @@
     function leaveRoom() {
         debug('Выход из комнаты...');
         
+        // Останавливаем скриншеринг
+        stopScreenShare();
+        
         mediaCalls.forEach(call => {
             try { call.close(); } catch(e) {}
         });
         mediaCalls = [];
+        
+        screenCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
+        screenCalls = [];
         
         dataConnections.forEach(conn => {
             try { conn.close(); } catch(e) {}
@@ -826,7 +1054,14 @@
         
         audioContainers.innerHTML = '';
         localAudioStream = null;
+        localScreenStream = null;
         hostPeerId = null;
+        isSharingScreen = false;
+        
+        screenVideo.srcObject = null;
+        screenShareContainer.classList.remove('active');
+        screenShareBtn.classList.remove('active');
+        screenShareBtn.innerText = '🖥️ Демка (показать экран)';
         
         updatePeersUI();
         chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли из комнаты</div>';
@@ -869,7 +1104,6 @@
         });
     });
     
-    // Авто-клик для мобильных (разблокировка контекста)
     document.addEventListener('touchstart', () => {
         ensureAudio();
     }, { once: true });
