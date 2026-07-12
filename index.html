@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Чат и Демка</title>
+    <!-- Подключаем стабильную библиотеку PeerJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', -apple-system, sans-serif; background-color: #1e1e2e; color: #cdd6f4; display: flex; height: 100vh; margin: 0; overflow: hidden; }
+        
+        /* Адаптивный интерфейс для ПК и мобилок */
+        #sidebar { width: 300px; background-color: #252538; padding: 20px; display: flex; flex-direction: column; border-right: 2px solid #313244; flex-shrink: 0; }
+        #main-area { flex: 1; display: flex; flex-direction: column; background-color: #181825; height: 100%; }
+        
+        #chat-window { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        #input-area { padding: 15px; background-color: #313244; display: flex; gap: 10px; align-items: center; }
+        
+        .msg { padding: 10px 14px; border-radius: 8px; max-width: 75%; word-break: break-word; font-size: 0.95em; }
+        .msg.me { background-color: #89b4fa; color: #11111b; align-self: flex-end; }
+        .msg.friend { background-color: #45475a; color: #cdd6f4; align-self: flex-start; }
+        .msg img { max-width: 100%; border-radius: 6px; margin-top: 5px; display: block; }
+        
+        .peer-id-box { font-size: 0.85em; background: #11111b; padding: 10px; border-radius: 6px; word-break: break-all; user-select: all; margin: 5px 0 15px 0; color: #f5c2e7; cursor: pointer; text-align: center; font-weight: bold; border: 1px dashed #f5c2e7; }
+        input[type="text"] { flex: 1; padding: 12px; border: none; border-radius: 6px; background-color: #45475a; color: #fff; font-size: 1em; }
+        button { background-color: #a6e3a1; color: #11111b; border: none; padding: 12px 15px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.95em; }
+        button:disabled { background-color: #585b70; color: #7f849c; cursor: not-allowed; }
+        
+        /* Сетка для стримов: на мобилках блоки встанут друг под друга */
+        #video-container { display: none; padding: 10px; background: #11111b; gap: 10px; justify-content: center; align-items: center; border-bottom: 2px solid #313244; flex-wrap: wrap; }
+        .video-box { position: relative; background: #000; border-radius: 8px; overflow: hidden; display: flex; flex: 1; min-width: 240px; max-height: 250px; }
+        .video-box span { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.7); padding: 3px 8px; border-radius: 4px; font-size: 0.75em; z-index: 10; font-weight: bold; }
+        
+        video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+        
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; height: auto; border-right: none; border-bottom: 2px solid #313244; padding: 15px; }
+            .peer-id-box { margin-bottom: 10px; }
+            #video-container { max-height: 40vh; overflow-y: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h3 style="margin: 0 0 5px 0; font-size: 1em;">Твой ID (нажми для копирования):</h3>
+    <div class="peer-id-box" id="my-id">Генерация ключа...</div>
+    
+    <div id="status" style="color: #f9e2af; font-weight: bold; margin-bottom: 12px; font-size: 0.9em;">Инициализация сети...</div>
+    
+    <div style="display: flex; gap: 8px; width: 100%;">
+        <input type="text" id="friend-id" placeholder="Вставь ID друга">
+        <button id="connect-btn" disabled>Связаться</button>
+    </div>
+    
+    <button id="screen-btn" style="display: none; margin-top: 12px; background-color: #f38ba8; width: 100%;">Транслировать экран</button>
+    <button id="stop-screen-btn" style="display: none; margin-top: 12px; width: 100%; background-color: #74c7ec;">Выключить демку</button>
+</div>
+
+<div id="main-area">
+    <div id="video-container">
+        <div class="video-box" id="friend-box">
+            <span>Демка друга</span>
+            <video id="remote-video" autoplay playsinline></video>
+        </div>
+        <div class="video-box" id="my-box" style="display: none;">
+            <span>Твоя демка</span>
+            <video id="local-video" autoplay playsinline muted></video>
+        </div>
+    </div>
+    
+    <div id="chat-window">
+        <div class="msg friend" style="align-self: center; background: none; color: #6c7086; text-align: center;">
+            Инструкция: Отправь свой ID на второе устройство, вставь его там в поле и нажмите «Связаться».
+        </div>
+    </div>
+    
+    <div id="input-area">
+        <input type="text" id="msg-input" placeholder="Введите сообщение..." disabled>
+        <input type="file" id="file-input" accept="image/*" style="display: none;">
+        <button id="file-btn" disabled style="background-color: #f9e2af;">📷</button>
+        <button id="send-btn" disabled>Отправить</button>
+    </div>
+</div>
+
+<!-- Тег для аудиопотока друга -->
+<audio id="remote-audio" autoplay playsinline></audio>
+
+<script>
+    // Подключаем надежные STUN сервера Google для обхода NAT и роутеров напрямую
+    const peerConfig = {
+        config: {
+            'iceServers': [
+                { 'urls': 'stun:stun.l.google.com:19302' },
+                { 'urls': 'stun:stun1.l.google.com:19302' },
+                { 'urls': 'stun:stun2.l.google.com:19302' },
+                { 'urls': 'stun:stun3.l.google.com:19302' }
+            ]
+        }
+    };
+
+    let peer = null;
+    let localAudioStream = null;
+    let currentDataConnection = null;
+    let currentMediaCall = null;
+    let screenStream = null;
+
+    // Элементы интерфейса
+    const myIdDisplay = document.getElementById('my-id');
+    const statusDisplay = document.getElementById('status');
+    const friendIdInput = document.getElementById('friend-id');
+    const connectBtn = document.getElementById('connect-btn');
+    const chatWindow = document.getElementById('chat-window');
+    const msgInput = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+    const fileInput = document.getElementById('file-input');
+    const fileBtn = document.getElementById('file-btn');
+    const screenBtn = document.getElementById('screen-btn');
+    const stopScreenBtn = document.getElementById('stop-screen-btn');
+    const remoteVideo = document.getElementById('remote-video');
+    const localVideo = document.getElementById('local-video');
+    const videoContainer = document.getElementById('video-container');
+    const myBox = document.getElementById('my-box');
+    const remoteAudio = document.getElementById('remote-audio');
+
+    function initPeer() {
+        peer = new Peer(peerConfig);
+
+        peer.on('open', (id) => {
+            myIdDisplay.innerText = id;
+            statusDisplay.innerText = "Доступ к микрофону...";
+            requestMicrophone();
+        });
+
+        peer.on('error', (err) => {
+            console.error('PeerJS Error:', err);
+            if (currentDataConnection && currentDataConnection.open) return; // Игнорируем ошибки сервера, если коннект уже прямой
+            statusDisplay.innerText = "Ошибка. Обновите страницу.";
+        });
+
+        peer.on('disconnected', () => {
+            console.log("Сигнальный сервер отключен. Канал связи P2P функционирует автономно.");
+        });
+    }
+
+    function requestMicrophone() {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(stream => {
+                localAudioStream = stream;
+                statusDisplay.innerText = "Ожидание подключения...";
+                connectBtn.disabled = false;
+            }).catch(err => {
+                console.warn("Микрофон заблокирован:", err);
+                statusDisplay.innerText = "Без микрофона (только чат)";
+                connectBtn.disabled = false;
+            });
+    }
+
+    initPeer();
+
+    // Кликер копирования
+    myIdDisplay.addEventListener('click', () => {
+        if (myIdDisplay.innerText.includes("...")) return;
+        navigator.clipboard.writeText(myIdDisplay.innerText)
+            .then(() => alert("ID успешно скопирован!"))
+            .catch(() => alert("Не удалось скопировать, выдели текст вручную."));
+    });
+
+    // Обработка успешного соединения (для обеих сторон)
+    function setupDataConnection(conn) {
+        currentDataConnection = conn;
+        msgInput.disabled = false;
+        sendBtn.disabled = false;
+        fileBtn.disabled = false;
+        
+        // На телефонах (iOS/Android) функция захвата экрана через getDisplayMedia часто заблокирована нативно, 
+        // поэтому кнопку демки показываем только если браузер её поддерживает
+        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+            screenBtn.style.display = 'block';
+        }
+        
+        statusDisplay.innerText = "Соединение установлено! (P2P)";
+        chatWindow.innerHTML = '<div class="msg friend" style="align-self: center; background: none; color: #a6e3a1;">Безопасный P2P-канал открыт!</div>';
+
+        // Отключаемся от главного сервера через 3 секунды, чтобы избежать кика по лимитам
+        setTimeout(() => {
+            if (peer && !peer.disconnected) {
+                peer.disconnect();
+            }
+        }, 3000);
+
+        conn.on('data', (data) => {
+            if (data.type === 'text') appendMessage(data.text, 'friend');
+            else if (data.type === 'image') appendMessage(data.text, 'friend', data.img);
+        });
+
+        conn.on('close', () => {
+            statusDisplay.innerText = "Связь разорвана друг другом.";
+            msgInput.disabled = true;
+            sendBtn.disabled = true;
+            fileBtn.disabled = true;
+            screenBtn.style.display = 'none';
+            stopScreenBtn.style.display = 'none';
+        });
+    }
+
+    // Слушаем входящие текстовые запросы
+    peer.on('connection', (conn) => setupDataConnection(conn));
+    
+    // Слушаем входящие аудио/видео вызовы
+    peer.on('call', (call) => {
+        currentMediaCall = call;
+        call.answer(localAudioStream); // Отвечаем своим микрофоном
+        
+        call.on('stream', (remoteStream) => {
+            // Если друг транслирует видеопоток (экран)
+            if (remoteStream.getVideoTracks().length > 0) {
+                videoContainer.style.style.display = 'flex';
+                remoteVideo.srcObject = remoteStream;
+            } else {
+                // Если идет только звук
+                remoteAudio.srcObject = remoteStream;
+            }
+        });
+    });
+
+    // Инициация соединения кнопкой «Связаться»
+    connectBtn.addEventListener('click', () => {
+        const fId = friendIdInput.value.trim();
+        if (!fId) return alert("Сначала вставь ID!");
+
+        statusDisplay.innerText = "Прямое подключение...";
+        const conn = peer.connect(fId);
+        conn.on('open', () => setupDataConnection(conn));
+
+        if (localAudioStream) {
+            const call = peer.call(fId, localAudioStream);
+            currentMediaCall = call;
+            call.on('stream', (remoteStream) => {
+                remoteAudio.srcObject = remoteStream;
+            });
+        }
+    });
+
+    // Логика захвата и раздачи экрана (Демка)
+    screenBtn.addEventListener('click', async () => {
+        try {
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            
+            videoContainer.style.display = 'flex';
+            myBox.style.display = 'flex';
+            localVideo.srcObject = screenStream;
+
+            const combinedStream = new MediaStream([
+                ...screenStream.getVideoTracks(),
+                ...(localAudioStream ? localAudioStream.getAudioTracks() : [])
+            ]);
+
+            const targetPeerId = currentDataConnection.peer;
+            if (currentMediaCall) currentMediaCall.close();
+            
+            currentMediaCall = peer.call(targetPeerId, combinedStream);
+            
+            screenBtn.style.display = 'none';
+            stopScreenBtn.style.display = 'block';
+
+            // Если остановили демку встроенной кнопкой браузера
+            screenStream.getVideoTracks()[0].onended = () => stopScreen();
+        } catch (err) {
+            console.error("Не удалось запустить демку:", err);
+        }
+    });
+
+    function stopScreen() {
+        if (screenStream) {
+            screenStream.getTracks().forEach(track => track.stop());
+        }
+        myBox.style.display = 'none';
+        if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().length === 0) {
+            videoContainer.style.display = 'none';
+        }
+        screenBtn.style.display = 'block';
+        stopScreenBtn.style.display = 'none';
+        
+        const targetPeerId = currentDataConnection.peer;
+        if (currentMediaCall) currentMediaCall.close();
+        
+        // Возвращаем только аудио
+        if (localAudioStream) {
+            currentMediaCall = peer.call(targetPeerId, localAudioStream);
+        }
+    }
+    stopScreenBtn.addEventListener('click', stopScreen);
+
+    // Работа текстового чата и картинок
+    function sendMsg() {
+        const text = msgInput.value.trim();
+        if (!text || !currentDataConnection) return;
+        currentDataConnection.send({ type: 'text', text: text });
+        appendMessage(text, 'me');
+        msgInput.value = '';
+    }
+    sendBtn.addEventListener('click', sendMsg);
+    msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
+
+    fileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file || !currentDataConnection) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            currentDataConnection.send({ type: 'image', text: `Изображение: ${file.name}`, img: event.target.result });
+            appendMessage(`Изображение: ${file.name}`, 'me', event.target.result);
+        };
+        reader.readAsDataURL(file);
+    });
+
+    function appendMessage(text, type, imgData = null) {
+        const msg = document.createElement('div');
+        msg.classList.add('msg', type);
+        if (text) msg.innerText = text;
+        if (imgData) {
+            const img = document.createElement('img');
+            img.src = imgData;
+            msg.appendChild(img);
+        }
+        chatWindow.appendChild(msg);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
