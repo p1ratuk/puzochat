@@ -29,7 +29,7 @@
             border-right: 2px solid #313244; 
             flex-shrink: 0; 
             overflow-y: auto; 
-            gap: 12px;
+            gap: 10px;
         }
         #main-area { 
             flex: 1; 
@@ -106,7 +106,6 @@
             opacity: 0.6;
             margin-top: 2px;
         }
-        /* Стрим экрана */
         #screen-share-container {
             display: none;
             position: relative;
@@ -176,11 +175,11 @@
             background-color: #a6e3a1; 
             color: #11111b; 
             border: none; 
-            padding: 12px 15px; 
+            padding: 10px 12px; 
             font-weight: bold; 
             border-radius: 6px; 
             cursor: pointer; 
-            font-size: 0.95em; 
+            font-size: 0.9em; 
             transition: 0.2s;
             white-space: nowrap;
         }
@@ -201,21 +200,39 @@
             background-color: #f38ba8;
             animation: pulse 1.5s infinite;
         }
+        .btn-camera {
+            background-color: #94e2d5;
+            width: 100%;
+        }
+        .btn-camera.active {
+            background-color: #f38ba8;
+            animation: pulse 1.5s infinite;
+        }
+        .btn-switch-camera {
+            background-color: #89dceb;
+            width: 100%;
+            font-size: 0.8em;
+            padding: 8px;
+            display: none;
+        }
+        .btn-switch-camera.visible {
+            display: block;
+        }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
         }
         .volume-control { 
-            margin: 10px 0; 
+            margin: 5px 0; 
             display: flex; 
             flex-direction: column; 
-            gap: 8px; 
+            gap: 6px; 
             background: #181825; 
-            padding: 12px; 
+            padding: 10px; 
             border-radius: 6px; 
         }
         .volume-control label { 
-            font-size: 0.85em; 
+            font-size: 0.8em; 
             color: #a6adc8; 
             display: flex; 
             justify-content: space-between; 
@@ -275,13 +292,14 @@
             background: #11111b;
             padding: 10px;
             border-radius: 6px;
-            font-size: 0.85em;
+            font-size: 0.8em;
         }
         .peer-item {
-            padding: 4px 0;
+            padding: 3px 0;
             display: flex;
             align-items: center;
             gap: 6px;
+            font-size: 0.85em;
         }
         .peer-dot {
             width: 8px;
@@ -291,10 +309,20 @@
             flex-shrink: 0;
         }
         .debug-info {
-            font-size: 0.7em;
+            font-size: 0.65em;
             color: #585b70;
             word-break: break-all;
             margin-top: 5px;
+        }
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; max-height: 42%; flex-shrink: 0; padding: 10px; gap: 6px; overflow-y: auto; }
+            #main-area { flex: 1; min-height: 0; }
+            #chat-window { flex: 1; padding: 10px; }
+            #input-area { padding: 10px; }
+            .room-box { font-size: 0.9em; padding: 8px; }
+            button { padding: 10px; font-size: 0.85em; }
+            #screen-share-container { max-height: 30%; }
         }
     </style>
 </head>
@@ -311,10 +339,7 @@
         <button id="join-room-btn" class="btn-join">🚪 Войти в комнату</button>
         
         <p style="font-size:0.7em;color:#585b70;margin-top:8px;">
-            💡 Совет: создавайте комнату на ПК, заходите с телефона
-        </p>
-        <p style="font-size:0.7em;color:#585b70;">
-            🖥️ Демки — шеринг экрана. Работает на ПК и Android
+            💡 Создавайте на ПК, заходите с телефона
         </p>
     </div>
 </div>
@@ -323,21 +348,23 @@
     <h3 style="margin: 0; font-size: 0.9em; color: #a6adc8;">🏠 Комната:</h3>
     <div class="room-box" id="room-display">---</div>
     
-    <div id="status" style="color: #a6e3a1; font-weight: bold; font-size: 0.9em; word-break: break-all;">
+    <div id="status" style="color: #a6e3a1; font-weight: bold; font-size: 0.85em; word-break: break-all;">
         Ожидание...
     </div>
     
     <div class="peers-box">
-        <div id="peers-count" style="font-weight: bold; margin-bottom: 6px;">👥 Участников: 1</div>
+        <div id="peers-count" style="font-weight: bold; margin-bottom: 4px;">👥 Участников: 1</div>
         <div id="peers-list"></div>
     </div>
 
     <div class="volume-control">
-        <label>🎤 Мой микрофон: <span id="my-vol-txt">100%</span></label>
+        <label>🎤 Микрофон: <span id="my-vol-txt">100%</span></label>
         <input type="range" id="my-volume" min="0" max="200" value="100">
     </div>
 
-    <button id="screen-share-btn" class="btn-screen">🖥️ Демка (показать экран)</button>
+    <button id="screen-share-btn" class="btn-screen">🖥️ Демка экрана</button>
+    <button id="camera-btn" class="btn-camera">📱 Включить камеру</button>
+    <button id="switch-camera-btn" class="btn-switch-camera">🔄 Переключить камеру</button>
     <button id="refresh-audio-btn" class="btn-refresh">🔄 Переподключить звук</button>
     <button id="leave-btn" class="btn-leave">🚪 Покинуть комнату</button>
     
@@ -346,19 +373,19 @@
 
 <div id="main-area">
     <div id="screen-share-container">
-        <div id="screen-share-label">📺 Демка</div>
+        <div id="screen-share-label">📺 Трансляция</div>
         <button id="stop-screen-btn">❌ Остановить</button>
         <video id="screen-video" autoplay playsinline muted></video>
     </div>
     <div id="chat-window">
         <div class="msg system">
-            <span>💬 Чат готов. Можно показывать экран (демки) через кнопку в меню слева!</span>
+            <span>💬 Чат готов. Демка экрана и камера работают на ПК и телефоне!</span>
         </div>
     </div>
     
     <div id="input-area">
         <input type="text" id="msg-input" placeholder="Введите сообщение...">
-        <button id="send-btn">📨 Отправить</button>
+        <button id="send-btn">📨</button>
     </div>
 </div>
 
@@ -366,10 +393,7 @@
 
 <script>
     // ============ Утилиты ============
-    const avatars = [
-        '🐱', '🐶', '🦊', '🐸', '🐵', '🐼', '🐨', '🐯',
-        '🦁', '🐮', '🐷', '🐰', '🐻', '🐔', '🐧', '🦄'
-    ];
+    const avatars = ['🐱','🐶','🦊','🐸','🐵','🐼','🐨','🐯','🦁','🐮','🐷','🐰','🐻','🐔','🐧','🦄'];
     
     function getAvatar(seed) {
         let hash = 0;
@@ -391,16 +415,17 @@
         const msgBuffer = new TextEncoder().encode(clean);
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2,'0')).join('').substring(0,16);
         return `rm_${prefix}_${hashHex}`;
     }
 
-    // ============ DOM элементы ============
+    function isMobile() {
+        return /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
+    }
+
+    // ============ DOM ============
     const loginOverlay = document.getElementById('login-overlay');
     const roomInput = document.getElementById('room-input');
-    const createRoomBtn = document.getElementById('create-room-btn');
-    const createMegaBtn = document.getElementById('create-mega-btn');
-    const joinRoomBtn = document.getElementById('join-room-btn');
     const roomDisplay = document.getElementById('room-display');
     const statusDisplay = document.getElementById('status');
     const peersCount = document.getElementById('peers-count');
@@ -411,65 +436,57 @@
     const audioContainers = document.getElementById('audio-containers');
     const myVolSlider = document.getElementById('my-volume');
     const myVolTxt = document.getElementById('my-vol-txt');
-    const leaveBtn = document.getElementById('leave-btn');
-    const refreshAudioBtn = document.getElementById('refresh-audio-btn');
     const debugInfo = document.getElementById('debug-info');
     const screenShareBtn = document.getElementById('screen-share-btn');
+    const cameraBtn = document.getElementById('camera-btn');
+    const switchCameraBtn = document.getElementById('switch-camera-btn');
     const screenShareContainer = document.getElementById('screen-share-container');
     const screenVideo = document.getElementById('screen-video');
     const stopScreenBtn = document.getElementById('stop-screen-btn');
     const screenShareLabel = document.getElementById('screen-share-label');
+    const refreshAudioBtn = document.getElementById('refresh-audio-btn');
+    const leaveBtn = document.getElementById('leave-btn');
 
     // ============ Состояние ============
     let peer = null;
     let localAudioStream = null;
     let localScreenStream = null;
+    let localCameraStream = null;
     let audioContext = null;
     let gainNode = null;
     let dataConnections = [];
-    let mediaCalls = [];      // аудио звонки
-    let screenCalls = [];     // звонки с экраном
+    let mediaCalls = [];
+    let videoCalls = [];
     let isMegaRoom = false;
     let amIHost = false;
     let myPeerId = '';
     let myAvatar = '';
     let hostPeerId = null;
     let isSharingScreen = false;
+    let isSharingCamera = false;
+    let currentCameraFacing = 'user'; // 'user' = фронталка, 'environment' = задняя
 
-    // ============ Аудио контекст ============
+    // ============ Аудио ============
     function ensureAudio() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') audioContext.resume();
     }
-
     document.addEventListener('click', ensureAudio);
     document.addEventListener('touchstart', ensureAudio);
 
-    // ============ Микрофон ============
     async function getMicrophone() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }, 
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
                 video: false 
             });
-            
             ensureAudio();
             const source = audioContext.createMediaStreamSource(stream);
             gainNode = audioContext.createGain();
             source.connect(gainNode);
-            
-            const destination = audioContext.createMediaStreamDestination();
-            gainNode.connect(destination);
-            
-            localAudioStream = destination.stream;
+            const dest = audioContext.createMediaStreamDestination();
+            gainNode.connect(dest);
+            localAudioStream = dest.stream;
             statusDisplay.innerText = '🎤 Микрофон готов';
             debug('Микрофон получен');
             return true;
@@ -486,395 +503,313 @@
         debugInfo.innerText = msg;
     }
 
-    // ============ Шеринг экрана ============
+    // ============ Камера с переключением ============
+    async function startCameraShare(facingMode = 'user') {
+        try {
+            // Останавливаем предыдущую камеру
+            if (localCameraStream) {
+                localCameraStream.getTracks().forEach(t => t.stop());
+                localCameraStream = null;
+            }
+            if (isSharingScreen) stopScreenShare();
+            
+            const constraints = {
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            localCameraStream = stream;
+            currentCameraFacing = facingMode;
+            
+            screenVideo.srcObject = stream;
+            screenShareContainer.classList.add('active');
+            screenShareLabel.innerText = facingMode === 'user' ? '📱 Фронтальная камера' : '📱 Основная камера';
+            cameraBtn.classList.add('active');
+            cameraBtn.innerText = '📱 Камера работает... (стоп)';
+            switchCameraBtn.classList.add('visible');
+            isSharingCamera = true;
+            
+            // Закрываем старые видео-звонки и шлём новый стрим
+            closeAllVideoCalls();
+            broadcastVideo(stream, 'camera');
+            
+            stream.getVideoTracks()[0].addEventListener('ended', () => stopCameraShare());
+            
+            addMessage(`📱 Камера включена (${facingMode === 'user' ? 'фронтальная' : 'основная'})`, 'system');
+            debug('Камера запущена: ' + facingMode);
+            
+        } catch (err) {
+            console.error('Ошибка камеры:', err);
+            debug('Ошибка камеры: ' + err.message);
+            if (err.name === 'NotAllowedError') addMessage('⚠️ Доступ к камере запрещён.', 'system');
+            else if (err.name === 'NotFoundError') addMessage('⚠️ Камера не найдена.', 'system');
+            else addMessage('❌ Ошибка камеры: ' + err.message, 'system');
+        }
+    }
+
+    function stopCameraShare() {
+        if (localCameraStream) {
+            localCameraStream.getTracks().forEach(t => t.stop());
+            localCameraStream = null;
+        }
+        closeAllVideoCalls();
+        screenVideo.srcObject = null;
+        screenShareContainer.classList.remove('active');
+        screenShareLabel.innerText = '📺 Трансляция';
+        cameraBtn.classList.remove('active');
+        cameraBtn.innerText = '📱 Включить камеру';
+        switchCameraBtn.classList.remove('visible');
+        isSharingCamera = false;
+        addMessage('📱 Камера выключена', 'system');
+        debug('Камера остановлена');
+    }
+
+    function switchCamera() {
+        if (!isSharingCamera) return;
+        const newFacing = currentCameraFacing === 'user' ? 'environment' : 'user';
+        debug('Переключение камеры на: ' + newFacing);
+        startCameraShare(newFacing);
+    }
+
+    // ============ Экран ============
     async function startScreenShare() {
         try {
-            // Пробуем получить экран с аудио (для вкладок)
             const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 30 }
-                },
-                audio: true // Захват звука с вкладки если есть
+                video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+                audio: true
             });
+            if (isSharingCamera) stopCameraShare();
             
             localScreenStream = stream;
             screenVideo.srcObject = stream;
             screenShareContainer.classList.add('active');
+            screenShareLabel.innerText = '🖥️ Демка экрана';
             screenShareBtn.classList.add('active');
-            screenShareBtn.innerText = '🖥️ Идёт демка... (нажми чтобы остановить)';
+            screenShareBtn.innerText = '🖥️ Идёт демка... (стоп)';
             isSharingScreen = true;
             
-            // Отправляем экран всем подключённым
-            broadcastScreen(stream);
+            closeAllVideoCalls();
+            broadcastVideo(stream, 'screen');
             
-            // Если пользователь остановил шаринг через браузер
-            stream.getVideoTracks()[0].addEventListener('ended', () => {
-                stopScreenShare();
-            });
-            
-            addMessage('🖥️ Вы запустили демку (шеринг экрана)', 'system');
-            debug('Шеринг экрана запущен');
-            
+            stream.getVideoTracks()[0].addEventListener('ended', () => stopScreenShare());
+            addMessage('🖥️ Демка экрана запущена', 'system');
+            debug('Экран шарится');
         } catch (err) {
-            console.error('Ошибка шеринга экрана:', err);
-            debug('Ошибка шеринга: ' + err.message);
-            addMessage('❌ Не удалось запустить демку: ' + err.message, 'system');
+            console.error('Ошибка экрана:', err);
+            debug('Ошибка экрана: ' + err.message);
+            if (isMobile()) addMessage('⚠️ Шеринг экрана не работает в этом браузере. Попробуйте камеру.', 'system');
+            else addMessage('❌ Не удалось: ' + err.message, 'system');
         }
     }
 
     function stopScreenShare() {
         if (localScreenStream) {
-            localScreenStream.getTracks().forEach(track => track.stop());
+            localScreenStream.getTracks().forEach(t => t.stop());
             localScreenStream = null;
         }
-        
-        // Закрываем все screen calls
-        screenCalls.forEach(call => {
-            try { call.close(); } catch(e) {}
-        });
-        screenCalls = [];
-        
+        closeAllVideoCalls();
         screenVideo.srcObject = null;
         screenShareContainer.classList.remove('active');
+        screenShareLabel.innerText = '📺 Трансляция';
         screenShareBtn.classList.remove('active');
-        screenShareBtn.innerText = '🖥️ Демка (показать экран)';
+        screenShareBtn.innerText = '🖥️ Демка экрана';
         isSharingScreen = false;
-        
         addMessage('🖥️ Демка остановлена', 'system');
-        debug('Шеринг экрана остановлен');
+        debug('Экран остановлен');
     }
 
-    function broadcastScreen(stream) {
-        // Отправляем экран всем data соединениям
+    // ============ Видео-звонки ============
+    function broadcastVideo(stream, type) {
         dataConnections.forEach(conn => {
-            // Проверяем, нет ли уже screen call с этим пиром
-            const existingCall = screenCalls.find(c => c.peer === conn.peer);
-            if (!existingCall && peer) {
+            const exists = videoCalls.find(c => c.peer === conn.peer);
+            if (!exists && peer) {
                 const call = peer.call(conn.peer, stream);
-                setupScreenCall(call, conn.peer);
+                setupVideoCall(call, conn.peer, type);
             }
         });
     }
 
-    function setupScreenCall(call, peerId) {
-        screenCalls.push(call);
-        const peerShort = peerId.substring(0, 8);
-        debug('Screen call установлен с: ' + peerShort);
-        
+    function setupVideoCall(call, peerId, type) {
+        videoCalls.push(call);
+        debug(`Видео (${type}) с: ` + peerId.substring(0,8));
         call.on('close', () => {
-            screenCalls = screenCalls.filter(c => c.peer !== peerId);
-            debug('Screen call закрыт: ' + peerShort);
+            videoCalls = videoCalls.filter(c => c.peer !== peerId);
+            updatePeersUI();
         });
-        
-        call.on('error', (err) => {
-            debug('Ошибка screen call: ' + err.message);
-        });
+        call.on('error', e => debug('Ошибка видео: ' + e.message));
     }
 
-    // При получении screen stream от другого участника
-    function receiveScreenStream(stream, peerId) {
-        const peerShort = peerId.substring(0, 8);
-        
-        // Создаём новый video элемент для входящего стрима
-        screenShareLabel.innerText = `📺 Демка от ${peerShort}...`;
+    function closeAllVideoCalls() {
+        videoCalls.forEach(c => { try { c.close(); } catch(e) {} });
+        videoCalls = [];
+        updatePeersUI();
+    }
+
+    function receiveVideoStream(stream, peerId, type) {
+        const peerShort = peerId.substring(0,8);
+        const label = type === 'camera' ? '📱 Камера' : '🖥️ Экран';
+        screenShareLabel.innerText = `${label} от ${peerShort}...`;
         screenVideo.srcObject = stream;
         screenShareContainer.classList.add('active');
-        
-        // Если стрим заканчивается
         stream.getVideoTracks()[0].addEventListener('ended', () => {
             screenVideo.srcObject = null;
             screenShareContainer.classList.remove('active');
-            screenShareLabel.innerText = '📺 Демка';
-            addMessage(`🖥️ Демка от ${peerShort}... закончилась`, 'system');
+            screenShareLabel.innerText = '📺 Трансляция';
         });
-        
-        addMessage(`🖥️ ${peerShort}... показывает демку!`, 'system');
-        debug('Получен screen stream от: ' + peerShort);
+        addMessage(`${label} от ${peerShort}...`, 'system');
     }
 
-    screenShareBtn.addEventListener('click', () => {
-        if (isSharingScreen) {
-            stopScreenShare();
-        } else {
-            startScreenShare();
-        }
-    });
-
-    stopScreenBtn.addEventListener('click', stopScreenShare);
-
-    // ============ Интерфейс ============
+    // ============ UI ============
     function updatePeersUI() {
-        const count = dataConnections.length + 1;
-        peersCount.innerText = `👥 Участников: ${count}`;
-        
+        peersCount.innerText = `👥 Участников: ${dataConnections.length + 1}`;
         let html = `<div class="peer-item"><span class="peer-dot"></span> Вы ${myAvatar}</div>`;
         dataConnections.forEach(conn => {
-            const peerShort = conn.peer.substring(0, 8);
-            const ava = getAvatar(conn.peer);
+            const ps = conn.peer.substring(0,8);
             const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
-            const hasScreen = screenCalls.some(c => c.peer === conn.peer);
-            const audioIcon = hasAudio ? '🔊' : '🔇';
-            const screenIcon = hasScreen ? ' 🖥️' : '';
-            html += `<div class="peer-item"><span class="peer-dot"></span> ${peerShort}... ${ava} ${audioIcon}${screenIcon}</div>`;
+            const hasVideo = videoCalls.some(c => c.peer === conn.peer);
+            html += `<div class="peer-item"><span class="peer-dot"></span> ${ps}... ${getAvatar(conn.peer)} ${hasAudio?'🔊':'🔇'}${hasVideo?' 📹':''}</div>`;
         });
         peersList.innerHTML = html;
     }
 
     function addMessage(text, type, peerId = '') {
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `msg ${type}`;
-        
+        const div = document.createElement('div');
+        div.className = `msg ${type}`;
         if (type === 'system') {
-            msgDiv.innerHTML = `<span>${text}</span>`;
+            div.innerHTML = `<span>${text}</span>`;
         } else {
             const ava = type === 'me' ? myAvatar : getAvatar(peerId);
-            const time = getTime();
-            
-            msgDiv.innerHTML = `
-                <div class="avatar">${ava}</div>
-                <div class="msg-content">
-                    <div>${escapeHtml(text)}</div>
-                    <div class="msg-time">${time}</div>
-                </div>
-            `;
+            div.innerHTML = `<div class="avatar">${ava}</div><div class="msg-content"><div>${escapeHtml(text)}</div><div class="msg-time">${getTime()}</div></div>`;
         }
-        
-        chatWindow.appendChild(msgDiv);
+        chatWindow.appendChild(div);
         chatWindow.scrollTop = chatWindow.scrollHeight;
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+    function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 
-    // ============ Отправка сообщений ============
+    // ============ Сообщения ============
     function sendMessage() {
         const text = msgInput.value.trim();
         if (!text) return;
-        
-        const payload = { 
-            type: 'text', 
-            text: text,
-            from: myPeerId,
-            time: getTime()
-        };
-        
-        dataConnections.forEach(conn => {
-            if (conn.open) {
-                conn.send(payload);
-            }
-        });
-        
+        const payload = { type: 'text', text, from: myPeerId, time: getTime() };
+        dataConnections.forEach(c => { if (c.open) c.send(payload); });
         addMessage(text, 'me');
         msgInput.value = '';
-        
-        if (dataConnections.length === 0) {
-            addMessage('⚠️ Нет подключённых участников. Сообщение видно только вам.', 'system');
-        }
+        if (dataConnections.length === 0) addMessage('⚠️ Нет участников. Сообщение видно только вам.', 'system');
     }
-
     sendBtn.onclick = sendMessage;
-    msgInput.onkeypress = (e) => {
-        if (e.key === 'Enter') sendMessage();
-    };
+    msgInput.onkeypress = e => { if (e.key === 'Enter') sendMessage(); };
 
-    // ============ Data Connection ============
+    // ============ Data ============
     function setupDataConnection(conn) {
-        if (dataConnections.find(c => c.peer === conn.peer)) {
-            debug('Дубликат data соединения: ' + conn.peer);
-            return;
-        }
-        
+        if (dataConnections.find(c => c.peer === conn.peer)) return;
         dataConnections.push(conn);
         updatePeersUI();
+        const ps = conn.peer.substring(0,8);
+        addMessage(`🔗 ${ps}... подключился`, 'system');
+        debug('Data: ' + ps);
         
-        const peerShort = conn.peer.substring(0, 8);
-        addMessage(`🔗 Участник ${peerShort}... подключился`, 'system');
-        debug('Data соединение установлено: ' + peerShort);
-        
-        // Если мы шарим экран — отправляем новому участнику
+        // Отправляем активные стримы новому
         if (isSharingScreen && localScreenStream && peer) {
-            setTimeout(() => {
-                const call = peer.call(conn.peer, localScreenStream);
-                setupScreenCall(call, conn.peer);
-            }, 500);
+            setTimeout(() => { const call = peer.call(conn.peer, localScreenStream); setupVideoCall(call, conn.peer, 'screen'); }, 500);
+        }
+        if (isSharingCamera && localCameraStream && peer) {
+            setTimeout(() => { const call = peer.call(conn.peer, localCameraStream); setupVideoCall(call, conn.peer, 'camera'); }, 700);
         }
         
-        conn.on('data', (data) => {
+        conn.on('data', data => {
             if (data.type === 'text') {
                 addMessage(data.text, 'friend', data.from || conn.peer);
-                
                 if (amIHost && isMegaRoom) {
-                    dataConnections.forEach(c => {
-                        if (c.peer !== conn.peer && c.open) {
-                            c.send(data);
-                        }
-                    });
+                    dataConnections.forEach(c => { if (c.peer !== conn.peer && c.open) c.send(data); });
                 }
             }
         });
         
         conn.on('close', () => {
-            const peerShort = conn.peer.substring(0, 8);
             dataConnections = dataConnections.filter(c => c.peer !== conn.peer);
-            
-            // Закрываем audio call
-            const audioCall = mediaCalls.find(c => c.peer === conn.peer);
-            if (audioCall) {
-                try { audioCall.close(); } catch(e) {}
-                mediaCalls = mediaCalls.filter(c => c.peer !== conn.peer);
-            }
-            
-            // Закрываем screen call
-            const screenCall = screenCalls.find(c => c.peer === conn.peer);
-            if (screenCall) {
-                try { screenCall.close(); } catch(e) {}
-                screenCalls = screenCalls.filter(c => c.peer !== conn.peer);
-            }
-            
+            [mediaCalls, videoCalls].forEach(arr => {
+                const found = arr.find(c => c.peer === conn.peer);
+                if (found) { try { found.close(); } catch(e) {} }
+            });
+            mediaCalls = mediaCalls.filter(c => c.peer !== conn.peer);
+            videoCalls = videoCalls.filter(c => c.peer !== conn.peer);
             updatePeersUI();
-            addMessage(`🔌 Участник ${peerShort}... отключился`, 'system');
-            debug('Data соединение закрыто: ' + peerShort);
-            
-            // Проверяем, не остался ли включённым чужой экран
-            if (screenVideo.srcObject && screenCalls.length === 0 && !isSharingScreen) {
+            addMessage(`🔌 ${ps}... отключился`, 'system');
+            if (screenVideo.srcObject && videoCalls.length === 0 && !isSharingScreen && !isSharingCamera) {
                 screenVideo.srcObject = null;
                 screenShareContainer.classList.remove('active');
-                screenShareLabel.innerText = '📺 Демка';
+                screenShareLabel.innerText = '📺 Трансляция';
             }
         });
-        
-        conn.on('error', (err) => {
-            debug('Ошибка data: ' + err.message);
-        });
+        conn.on('error', e => debug('Data error: ' + e.message));
     }
 
-    // ============ Media Call (аудио) ============
+    // ============ Аудио-звонки ============
     function setupMediaCall(call) {
         if (mediaCalls.find(c => c.peer === call.peer)) {
-            debug('Дубликат media звонка: ' + call.peer);
-            const old = mediaCalls.find(c => c.peer === call.peer);
-            try { old.close(); } catch(e) {}
+            try { mediaCalls.find(c => c.peer === call.peer).close(); } catch(e) {}
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
         }
-        
         mediaCalls.push(call);
         updatePeersUI();
         
-        const audioElem = document.createElement('audio');
-        audioElem.id = 'audio-' + call.peer.substring(0, 8);
-        audioElem.autoplay = true;
-        audioElem.playsinline = true;
-        audioElem.controls = false;
-        audioContainers.appendChild(audioElem);
+        const audio = document.createElement('audio');
+        audio.autoplay = true;
+        audio.playsinline = true;
+        audioContainers.appendChild(audio);
+        const ps = call.peer.substring(0,8);
+        debug('Аудио-звонок: ' + ps);
         
-        const peerShort = call.peer.substring(0, 8);
-        debug('Media звонок установлен: ' + peerShort);
-        
-        call.on('stream', (remoteStream) => {
-            debug('Поток получен от: ' + peerShort);
-            audioElem.srcObject = remoteStream;
-            
-            const playPromise = audioElem.play();
-            if (playPromise) {
-                playPromise.then(() => {
-                    debug('Аудио играет от: ' + peerShort);
-                }).catch(e => {
-                    debug('Ожидание клика для звука от: ' + peerShort);
-                });
-            }
+        call.on('stream', stream => {
+            audio.srcObject = stream;
+            audio.play().catch(() => {});
+            debug('Аудио-поток от: ' + ps);
         });
-        
         call.on('close', () => {
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
-            audioElem.remove();
+            audio.remove();
             updatePeersUI();
-            debug('Media звонок закрыт: ' + peerShort);
         });
-        
-        call.on('error', (err) => {
-            debug('Ошибка media: ' + err.message);
-        });
+        call.on('error', e => debug('Аудио error: ' + e.message));
     }
 
-    function callPeer(peerId) {
-        if (!localAudioStream) {
-            debug('Нет микрофона для звонка к: ' + peerId);
-            return null;
-        }
-        
-        if (!peer || !peer.id) {
-            debug('Peer не готов для звонка');
-            return null;
-        }
-        
-        const oldCall = mediaCalls.find(c => c.peer === peerId);
-        if (oldCall) {
-            try { oldCall.close(); } catch(e) {}
-            mediaCalls = mediaCalls.filter(c => c.peer !== peerId);
-        }
-        
-        debug('Звоним: ' + peerId.substring(0, 8));
+    function callPeerAudio(peerId) {
+        if (!localAudioStream || !peer) return;
+        const old = mediaCalls.find(c => c.peer === peerId);
+        if (old) { try { old.close(); } catch(e) {}; mediaCalls = mediaCalls.filter(c => c.peer !== peerId); }
+        debug('Звоним аудио: ' + peerId.substring(0,8));
         const call = peer.call(peerId, localAudioStream);
         setupMediaCall(call);
-        return call;
     }
 
     function refreshAllAudio() {
-        debug('Переподключение звука...');
-        
-        mediaCalls.forEach(call => {
-            try { call.close(); } catch(e) {}
-        });
+        mediaCalls.forEach(c => { try { c.close(); } catch(e) {} });
         mediaCalls = [];
-        
         audioContainers.innerHTML = '';
         
         if (amIHost) {
-            dataConnections.forEach(conn => {
-                setTimeout(() => {
-                    callPeer(conn.peer);
-                }, 300);
-            });
-            addMessage('🔄 Хост переподключает звук всем участникам...', 'system');
-        } 
-        else if (hostPeerId) {
-            setTimeout(() => {
-                const call = callPeer(hostPeerId);
-                if (call) {
-                    addMessage('🔄 Переподключение звука к хосту...', 'system');
-                }
-            }, 300);
+            dataConnections.forEach(conn => setTimeout(() => callPeerAudio(conn.peer), 300));
+            addMessage('🔄 Хост переподключает звук...', 'system');
+        } else if (hostPeerId) {
+            setTimeout(() => callPeerAudio(hostPeerId), 300);
+            addMessage('🔄 Переподключение звука...', 'system');
         }
         
-        // Переподключаем также скриншеринг если активен
-        if (isSharingScreen && localScreenStream) {
-            screenCalls.forEach(call => {
-                try { call.close(); } catch(e) {}
-            });
-            screenCalls = [];
-            
-            setTimeout(() => {
-                broadcastScreen(localScreenStream);
-            }, 500);
-        }
-        
+        if (isSharingScreen && localScreenStream) { closeAllVideoCalls(); setTimeout(() => broadcastVideo(localScreenStream, 'screen'), 500); }
+        if (isSharingCamera && localCameraStream) { closeAllVideoCalls(); setTimeout(() => broadcastVideo(localCameraStream, 'camera'), 700); }
         updatePeersUI();
     }
 
-    refreshAudioBtn.onclick = refreshAllAudio;
-
-    // ============ PeerJS инициализация ============
+    // ============ PeerJS ============
     function initPeer(myId, hostId = null) {
-        if (peer) {
-            peer.destroy();
-        }
-        
-        debug('Инициализация PeerJS: ' + myId.substring(0, 16));
+        if (peer) peer.destroy();
+        debug('Init Peer: ' + myId.substring(0,16));
         
         peer = new Peer(myId, {
             config: {
@@ -882,231 +817,145 @@
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
+                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+                    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
                 ],
                 iceCandidatePoolSize: 2
             }
         });
         
-        peer.on('open', async (id) => {
+        peer.on('open', async id => {
             myPeerId = id;
             myAvatar = getAvatar(id);
             statusDisplay.innerText = '🟢 Онлайн';
-            debug('Peer открыт: ' + id.substring(0, 16));
             updatePeersUI();
-            
             await getMicrophone();
             
             if (!amIHost && hostId) {
                 hostPeerId = hostId;
-                statusDisplay.innerText = '🔗 Подключение к хосту...';
-                debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
-                
-                const conn = peer.connect(hostId, {
-                    reliable: true
-                });
+                statusDisplay.innerText = '🔗 Подключение...';
+                const conn = peer.connect(hostId, { reliable: true });
                 setupDataConnection(conn);
-                
-                if (localAudioStream) {
-                    setTimeout(() => {
-                        debug('Гость звонит хосту');
-                        const call = peer.call(hostId, localAudioStream);
-                        setupMediaCall(call);
-                    }, 1000);
-                }
+                // Гость НЕ звонит хосту — хост сам позвонит
+                debug('Гость ждёт звонка от хоста');
             }
         });
         
-        peer.on('connection', (conn) => {
-            debug('Входящее соединение: ' + conn.peer.substring(0, 16));
+        peer.on('connection', conn => {
+            debug('Входящее: ' + conn.peer.substring(0,16));
             setupDataConnection(conn);
             
+            // Хост ВСЕГДА звонит гостю (решает проблему телефон->ПК)
             if (amIHost) {
                 setTimeout(() => {
-                    const hasCall = mediaCalls.some(c => c.peer === conn.peer);
-                    if (!hasCall && localAudioStream) {
-                        debug('Хост звонит гостю (не дождался звонка): ' + conn.peer.substring(0, 16));
-                        callPeer(conn.peer);
+                    const hasAudioCall = mediaCalls.some(c => c.peer === conn.peer);
+                    if (!hasAudioCall && localAudioStream) {
+                        debug('Хост звонит гостю: ' + conn.peer.substring(0,16));
+                        callPeerAudio(conn.peer);
                     }
-                }, 2000);
+                }, 1500);
             }
         });
         
-        peer.on('call', (call) => {
-            debug('Входящий звонок от: ' + call.peer.substring(0, 16));
+        peer.on('call', call => {
+            debug('Входящий звонок: ' + call.peer.substring(0,16));
             
-            // Отвечаем на звонок
-            if (localAudioStream) {
-                call.answer(localAudioStream);
-            } else {
-                call.answer();
-            }
+            // Всегда отвечаем с аудио если есть
+            if (localAudioStream) call.answer(localAudioStream);
+            else call.answer();
             
-            // Проверяем, это аудио или скриншеринг
-            // PeerJS не различает типы, поэтому проверяем по наличию video треков в будущем
-            call.on('stream', (remoteStream) => {
-                // Если есть видео треки — это скриншеринг
+            call.on('stream', remoteStream => {
                 if (remoteStream.getVideoTracks().length > 0) {
-                    receiveScreenStream(remoteStream, call.peer);
-                    setupScreenCall(call, call.peer);
+                    // Видео (камера или экран)
+                    const label = remoteStream.getVideoTracks()[0].label || '';
+                    const videoType = (label.includes('camera') || label.includes('front') || label.includes('back')) ? 'camera' : 'screen';
+                    receiveVideoStream(remoteStream, call.peer, videoType);
+                    setupVideoCall(call, call.peer, videoType);
                 } else {
-                    // Иначе — аудио звонок
+                    // Аудио
                     setupMediaCall(call);
                 }
             });
         });
         
-        peer.on('error', (err) => {
-            console.error('PeerJS error:', err);
-            debug('Ошибка PeerJS: ' + err.type + ' - ' + (err.message || ''));
-            
-            if (err.type === 'peer-unavailable') {
-                statusDisplay.innerText = '❌ Комната не найдена';
-                addMessage('⚠️ Хост не в сети. Проверьте название комнаты.', 'system');
-            } else if (err.type === 'disconnected') {
-                statusDisplay.innerText = '🔴 Соединение потеряно';
-                addMessage('🔴 Соединение с сервером потеряно. Перезайдите.', 'system');
-            } else {
-                statusDisplay.innerText = '❌ Ошибка: ' + err.type;
-            }
+        peer.on('error', err => {
+            debug('Peer error: ' + err.type);
+            if (err.type === 'peer-unavailable') { statusDisplay.innerText = '❌ Комната не найдена'; addMessage('⚠️ Хост не в сети.', 'system'); }
+            else if (err.type === 'disconnected') { statusDisplay.innerText = '🔴 Соединение потеряно'; }
+            else statusDisplay.innerText = '❌ ' + err.type;
         });
         
         peer.on('disconnected', () => {
-            statusDisplay.innerText = '🔴 Отключён от сервера';
-            addMessage('🔴 Отключён от сигнального сервера. Нажмите "Покинуть комнату" и зайдите заново.', 'system');
-            debug('Отключён от сигнального сервера');
+            statusDisplay.innerText = '🔴 Отключён';
+            addMessage('🔴 Сигнальный сервер недоступен. Перезайдите.', 'system');
         });
     }
 
-    // ============ Старт сессии ============
-    async function startSession(role, megaMode) {
-        const roomName = roomInput.value.trim();
-        if (!roomName) {
-            alert('Введите название комнаты!');
-            return;
-        }
-        
-        isMegaRoom = megaMode;
+    // ============ Старт / Выход ============
+    async function startSession(role, mega) {
+        const name = roomInput.value.trim();
+        if (!name) return alert('Введите название комнаты!');
+        isMegaRoom = mega;
         amIHost = (role === 'host');
         hostPeerId = null;
-        
         loginOverlay.style.display = 'none';
-        roomDisplay.innerText = roomName + (isMegaRoom ? ' 🔥MEGA' : '');
+        roomDisplay.innerText = name + (mega ? ' 🔥MEGA' : '');
         statusDisplay.innerText = '⏳ Инициализация...';
-        
         chatWindow.innerHTML = '';
-        addMessage('⏳ Подготовка комнаты...', 'system');
+        addMessage('⏳ Подготовка...', 'system');
         
-        const randomId = Math.random().toString(36).substring(2, 6);
-        let myId = '';
-        let targetHostId = null;
-        
+        const rnd = Math.random().toString(36).substring(2,6);
+        let myId, targetHost = null;
         if (amIHost) {
-            myId = await hashRoomName(roomName, 'host');
-            statusDisplay.innerText = '🏠 Создаю комнату...';
-            debug('Создание комнаты. ID хоста: ' + myId.substring(0, 16));
+            myId = await hashRoomName(name, 'host');
         } else {
-            targetHostId = await hashRoomName(roomName, 'host');
-            hostPeerId = targetHostId;
-            myId = (await hashRoomName(roomName, 'guest')) + '_' + randomId;
-            statusDisplay.innerText = '🔍 Ищу комнату...';
-            debug('Поиск комнаты. ID хоста: ' + targetHostId.substring(0, 16));
+            targetHost = await hashRoomName(name, 'host');
+            hostPeerId = targetHost;
+            myId = (await hashRoomName(name, 'guest')) + '_' + rnd;
         }
-        
-        initPeer(myId, targetHostId);
+        initPeer(myId, targetHost);
     }
 
-    // ============ Выход из комнаты ============
     function leaveRoom() {
-        debug('Выход из комнаты...');
-        
-        // Останавливаем скриншеринг
         stopScreenShare();
-        
-        mediaCalls.forEach(call => {
-            try { call.close(); } catch(e) {}
-        });
-        mediaCalls = [];
-        
-        screenCalls.forEach(call => {
-            try { call.close(); } catch(e) {}
-        });
-        screenCalls = [];
-        
-        dataConnections.forEach(conn => {
-            try { conn.close(); } catch(e) {}
-        });
-        dataConnections = [];
-        
-        if (peer) {
-            peer.destroy();
-            peer = null;
-        }
-        
+        stopCameraShare();
+        [mediaCalls, videoCalls].forEach(arr => arr.forEach(c => { try { c.close(); } catch(e) {} }));
+        dataConnections.forEach(c => { try { c.close(); } catch(e) {} });
+        mediaCalls = []; videoCalls = []; dataConnections = [];
+        if (peer) { peer.destroy(); peer = null; }
         audioContainers.innerHTML = '';
-        localAudioStream = null;
-        localScreenStream = null;
-        hostPeerId = null;
-        isSharingScreen = false;
-        
+        localAudioStream = localScreenStream = localCameraStream = null;
+        hostPeerId = null; isSharingScreen = isSharingCamera = false;
         screenVideo.srcObject = null;
         screenShareContainer.classList.remove('active');
-        screenShareBtn.classList.remove('active');
-        screenShareBtn.innerText = '🖥️ Демка (показать экран)';
-        
+        screenShareLabel.innerText = '📺 Трансляция';
+        screenShareBtn.classList.remove('active'); screenShareBtn.innerText = '🖥️ Демка экрана';
+        cameraBtn.classList.remove('active'); cameraBtn.innerText = '📱 Включить камеру';
+        switchCameraBtn.classList.remove('visible');
         updatePeersUI();
-        chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли из комнаты</div>';
-        
+        chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли</div>';
         loginOverlay.style.display = 'flex';
-        roomDisplay.innerText = '---';
-        statusDisplay.innerText = 'Ожидание...';
-        debugInfo.innerText = '';
+        roomDisplay.innerText = '---'; statusDisplay.innerText = 'Ожидание...'; debugInfo.innerText = '';
     }
 
-    // ============ Громкость ============
-    myVolSlider.addEventListener('input', (e) => {
-        const val = e.target.value;
-        myVolTxt.innerText = val + '%';
-        if (gainNode) {
-            gainNode.gain.value = val / 100;
-        }
-    });
+    // ============ Обработчики ============
+    myVolSlider.oninput = e => { myVolTxt.innerText = e.target.value + '%'; if (gainNode) gainNode.gain.value = e.target.value / 100; };
+    screenShareBtn.onclick = () => isSharingScreen ? stopScreenShare() : startScreenShare();
+    cameraBtn.onclick = () => isSharingCamera ? stopCameraShare() : startCameraShare('user');
+    switchCameraBtn.onclick = switchCamera;
+    stopScreenBtn.onclick = () => { if (isSharingScreen) stopScreenShare(); if (isSharingCamera) stopCameraShare(); };
+    refreshAudioBtn.onclick = refreshAllAudio;
+    leaveBtn.onclick = leaveRoom;
+    document.getElementById('create-room-btn').onclick = () => startSession('host', false);
+    document.getElementById('create-mega-btn').onclick = () => startSession('host', true);
+    document.getElementById('join-room-btn').onclick = () => startSession('guest', false);
+    roomInput.onkeypress = e => { if (e.key === 'Enter') startSession('guest', false); };
 
-    // ============ Кнопки ============
-    createRoomBtn.addEventListener('click', () => startSession('host', false));
-    createMegaBtn.addEventListener('click', () => startSession('host', true));
-    joinRoomBtn.addEventListener('click', () => startSession('guest', false));
-    leaveBtn.addEventListener('click', leaveRoom);
-    
-    roomInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            startSession('guest', false);
-        }
-    });
-
-    // ============ Глобальная разблокировка звука ============
     document.addEventListener('click', () => {
         ensureAudio();
-        const audios = audioContainers.querySelectorAll('audio');
-        audios.forEach(a => {
-            if (a.paused && a.srcObject) {
-                a.play().catch(() => {});
-            }
-        });
+        audioContainers.querySelectorAll('audio').forEach(a => { if (a.paused && a.srcObject) a.play().catch(()=>{}); });
     });
-    
-    document.addEventListener('touchstart', () => {
-        ensureAudio();
-    }, { once: true });
+    document.addEventListener('touchstart', ensureAudio, { once: true });
 </script>
 
 </body>
