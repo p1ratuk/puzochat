@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Чат и Демка</title>
+    <title>P2P Чат по Никнеймам</title>
+    <!-- Подключаем твой локальный файл -->
     <script src="peerjs.min.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -20,12 +21,11 @@
         .msg.friend { background-color: #45475a; color: #cdd6f4; align-self: flex-start; }
         .msg img { max-width: 100%; border-radius: 6px; margin-top: 5px; display: block; }
         
-        .peer-id-box { font-size: 0.85em; background: #11111b; padding: 10px; border-radius: 6px; word-break: break-all; user-select: all; margin: 5px 0 15px 0; color: #f5c2e7; cursor: pointer; text-align: center; font-weight: bold; border: 1px dashed #f5c2e7; }
-        input[type="text"] { flex: 1; padding: 12px; border: none; border-radius: 6px; background-color: #45475a; color: #fff; font-size: 1em; }
+        .nick-box { font-size: 1.1em; background: #11111b; padding: 12px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 15px; color: #a6e3a1; border: 1px solid #313244; }
+        input[type="text"] { flex: 1; padding: 12px; border: none; border-radius: 6px; background-color: #45475a; color: #fff; font-size: 1em; width: 100%; }
         button { background-color: #a6e3a1; color: #11111b; border: none; padding: 12px 15px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.95em; }
         button:disabled { background-color: #585b70; color: #7f849c; cursor: not-allowed; }
         
-        /* Блок громкости */
         .volume-control { margin: 15px 0; display: flex; flex-direction: column; gap: 8px; background: #181825; padding: 10px; border-radius: 6px; }
         .volume-control label { font-size: 0.85em; color: #a6adc8; display: flex; justify-content: space-between; }
         .volume-control input[type="range"] { width: 100%; accent-color: #a6e3a1; cursor: pointer; }
@@ -36,28 +36,34 @@
         
         video { width: 100%; height: 100%; object-fit: contain; background: #000; }
         
-        @media (max-width: 768px) {
-            body { flex-direction: column; }
-            #sidebar { width: 100%; height: auto; border-right: none; border-bottom: 2px solid #313244; padding: 15px; }
-            .peer-id-box { margin-bottom: 10px; }
-            #video-container { max-height: 40vh; overflow-y: auto; }
-        }
+        /* Модалка ввода ника при старте */
+        #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #11111b; display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .login-card { background: #252538; padding: 30px; border-radius: 12px; border: 1px solid #313244; width: 90%; max-width: 400px; text-align: center; }
     </style>
 </head>
 <body>
 
+<!-- Окно ввода ника при входе -->
+<div id="login-overlay">
+    <div class="login-card">
+        <h2 style="margin-top: 0; color: #89b4fa;">Введите ваш никнейм</h2>
+        <p style="color: #a6adc8; font-size: 0.9em; margin-bottom: 20px;">Ник должен быть одинаковым у тебя и у друга (например, "pavel" или "колян")</p>
+        <input type="text" id="my-nickname-input" placeholder="Ваш ник..." style="margin-bottom: 15px; text-align: center;">
+        <button id="start-btn" style="width: 100%;">Войти в сеть</button>
+    </div>
+</div>
+
 <div id="sidebar">
-    <h3 style="margin: 0 0 5px 0; font-size: 1em;">Твой ID (нажми для копирования):</h3>
-    <div class="peer-id-box" id="my-id">Генерация ключа...</div>
+    <h3 style="margin: 0 0 5px 0; font-size: 0.9em; color: #a6adc8;">Ты вошел как:</h3>
+    <div class="nick-box" id="my-nick-display">---</div>
     
-    <div id="status" style="color: #f9e2af; font-weight: bold; margin-bottom: 12px; font-size: 0.9em;">Инициализация сети...</div>
+    <div id="status" style="color: #f9e2af; font-weight: bold; margin-bottom: 12px; font-size: 0.9em;">Ожидание ввода ника...</div>
     
-    <div style="display: flex; gap: 8px; width: 100%;">
-        <input type="text" id="friend-id" placeholder="Вставь ID друга">
-        <button id="connect-btn" disabled>Связаться</button>
+    <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+        <input type="text" id="friend-nick-input" placeholder="Никнейм друга">
+        <button id="connect-btn" disabled>Подключиться к другу</button>
     </div>
 
-    <!-- Регулировка звука -->
     <div class="volume-control">
         <label>Громкость друга: <span id="friend-vol-txt">100%</span></label>
         <input type="range" id="friend-volume" min="0" max="200" value="100">
@@ -84,7 +90,7 @@
     
     <div id="chat-window">
         <div class="msg friend" style="align-self: center; background: none; color: #6c7086; text-align: center;">
-            Инструкция: Отправь свой ID на второе устройство, вставь его там в поле и нажмите «Связаться».
+            Введите ник друга слева и нажмите «Подключиться».
         </div>
     </div>
     
@@ -99,13 +105,22 @@
 <audio id="remote-audio" autoplay playsinline></audio>
 
 <script>
+    // Хэш-функция для превращения любого текста/языка в безопасный ID для PeerJS
+    async function generatePeerId(nickname) {
+        const clean = nickname.trim().toLowerCase();
+        const msgBuffer = new TextEncoder().encode(clean);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 20);
+        return `room_${hashHex}`; // Уникальный префикс + 20 символов хэша
+    }
+
     const peerConfig = {
         config: {
             'iceServers': [
                 { 'urls': 'stun:stun.l.google.com:19302' },
                 { 'urls': 'stun:stun1.l.google.com:19302' },
-                { 'urls': 'stun:stun2.l.google.com:19302' },
-                { 'urls': 'stun:stun3.l.google.com:19302' }
+                { 'urls': 'stun:stun2.l.google.com:19302' }
             ]
         }
     };
@@ -115,14 +130,18 @@
     let currentDataConnection = null;
     let currentMediaCall = null;
     let screenStream = null;
-
-    // Переменные аудио-движка
     let audioContext = null;
     let gainNode = null; 
 
-    const myIdDisplay = document.getElementById('my-id');
+    // Элементы авторизации
+    const loginOverlay = document.getElementById('login-overlay');
+    const myNicknameInput = document.getElementById('my-nickname-input');
+    const startBtn = document.getElementById('start-btn');
+    const myNickDisplay = document.getElementById('my-nick-display');
+
+    // Остальные элементы
     const statusDisplay = document.getElementById('status');
-    const friendIdInput = document.getElementById('friend-id');
+    const friendNickInput = document.getElementById('friend-nick-input');
     const connectBtn = document.getElementById('connect-btn');
     const chatWindow = document.getElementById('chat-window');
     const msgInput = document.getElementById('msg-input');
@@ -136,57 +155,63 @@
     const videoContainer = document.getElementById('video-container');
     const myBox = document.getElementById('my-box');
     const remoteAudio = document.getElementById('remote-audio');
-    
-    // Элементы громкости
     const friendVolSlider = document.getElementById('friend-volume');
     const friendVolTxt = document.getElementById('friend-vol-txt');
     const myVolSlider = document.getElementById('my-volume');
     const myVolTxt = document.getElementById('my-vol-txt');
 
-    function initPeer() {
-        peer = new Peer(peerConfig);
+    // Кнопка входа по нику
+    startBtn.addEventListener('click', async () => {
+        const nick = myNicknameInput.value.trim();
+        if (!nick) return alert("Введите нормальный ник!");
+        
+        loginOverlay.style.display = 'none';
+        myNickDisplay.innerText = nick;
+        statusDisplay.innerText = "Генерация защищенного ID...";
+        
+        // Получаем хэшированный ID из ника
+        const finalPeerId = await generatePeerId(nick);
+        initPeer(finalPeerId);
+    });
+
+    myNicknameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') startBtn.click(); });
+
+    function initPeer(generatedId) {
+        // Создаем пира со СВОИМ фиксированным ID на основе ника
+        peer = new Peer(generatedId, peerConfig);
 
         peer.on('open', (id) => {
-            myIdDisplay.innerText = id;
             statusDisplay.innerText = "Доступ к микрофону...";
             requestMicrophone();
         });
 
         peer.on('error', (err) => {
+            if (err.type === 'unavailable-id') {
+                alert("Этот ник уже занят кем-то в сети! Перезагрузите страницу и введите другой.");
+                location.reload();
+            }
             if (currentDataConnection && currentDataConnection.open) return;
-            statusDisplay.innerText = "Ошибка. Обновите страницу.";
+            statusDisplay.innerText = "Ошибка сети.";
         });
 
-        peer.on('disconnected', () => {
-            console.log("P2P автономен.");
-        });
+        peer.on('disconnected', () => { console.log("P2P автономен."); });
     }
 
     function requestMicrophone() {
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(stream => {
                 localAudioStream = stream;
-                
-                // Инициализируем Web Audio API для усиления/ослабления своего микрофона
                 try {
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     const source = audioContext.createMediaStreamSource(stream);
                     gainNode = audioContext.createGain();
-                    
-                    // Связываем микрофон с усилителем
                     source.connect(gainNode);
-                    
-                    // Создаем измененный поток, который и пойдет другу
                     const destination = audioContext.createMediaStreamDestination();
                     gainNode.connect(destination);
-                    
-                    // Подменяем оригинальный поток на поток с управляемой громкостью
                     localAudioStream = destination.stream;
-                } catch(e) {
-                    console.error("AudioContext не поддерживается браузером", e);
-                }
+                } catch(e) { console.error(e); }
 
-                statusDisplay.innerText = "Ожидание подключения...";
+                statusDisplay.innerText = "В сети. Готов к подключению.";
                 connectBtn.disabled = false;
             }).catch(err => {
                 statusDisplay.innerText = "Без микрофона (только чат)";
@@ -194,30 +219,17 @@
             });
     }
 
-    initPeer();
-
-    // Регулировка громкости ДРУГА (влияет на твой динамик)
+    // Регулировки звука
     friendVolSlider.addEventListener('input', (e) => {
         const val = e.target.value;
         friendVolTxt.innerText = val + '%';
         remoteAudio.volume = val / 100;
     });
 
-    // Регулировка ТВОЕГО микрофона (усиливает твой звук для друга)
     myVolSlider.addEventListener('input', (e) => {
         const val = e.target.value;
         myVolTxt.innerText = val + '%';
-        if (gainNode) {
-            // min 0, max 3 (усиление в 3 раза от исходного)
-            gainNode.gain.value = val / 100;
-        }
-    });
-
-    myIdDisplay.addEventListener('click', () => {
-        if (myIdDisplay.innerText.includes("...")) return;
-        navigator.clipboard.writeText(myIdDisplay.innerText)
-            .then(() => alert("ID скопирован!"))
-            .catch(() => alert("Выдели текст вручную."));
+        if (gainNode) gainNode.gain.value = val / 100;
     });
 
     function setupDataConnection(conn) {
@@ -225,19 +237,12 @@
         msgInput.disabled = false;
         sendBtn.disabled = false;
         fileBtn.disabled = false;
+        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) screenBtn.style.display = 'block';
         
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-            screenBtn.style.display = 'block';
-        }
-        
-        statusDisplay.innerText = "Соединение установлено! (P2P)";
-        chatWindow.innerHTML = '<div class="msg friend" style="align-self: center; background: none; color: #a6e3a1;">Безопасный P2P-канал открыт!</div>';
+        statusDisplay.innerText = "Связь установлена!";
+        chatWindow.innerHTML = '<div class="msg friend" style="align-self: center; background: none; color: #a6e3a1;">Успешное подключение! Канал связи открыт.</div>';
 
-        setTimeout(() => {
-            if (peer && !peer.disconnected) {
-                peer.disconnect();
-            }
-        }, 3000);
+        setTimeout(() => { if (peer && !peer.disconnected) peer.disconnect(); }, 3000);
 
         conn.on('data', (data) => {
             if (data.type === 'text') appendMessage(data.text, 'friend');
@@ -246,42 +251,41 @@
 
         conn.on('close', () => {
             statusDisplay.innerText = "Связь разорвана.";
-            msgInput.disabled = true;
-            sendBtn.disabled = true;
-            fileBtn.disabled = true;
-            screenBtn.style.display = 'none';
-            stopScreenBtn.style.display = 'none';
+            msgInput.disabled = true; sendBtn.disabled = true; fileBtn.disabled = true;
+            screenBtn.style.display = 'none'; stopScreenBtn.style.display = 'none';
         });
     }
 
+    // Ловим входящие
     peer.on('connection', (conn) => setupDataConnection(conn));
-    
     peer.on('call', (call) => {
         currentMediaCall = call;
         call.answer(localAudioStream);
-        
         call.on('stream', (remoteStream) => {
             if (remoteStream.getVideoTracks().length > 0) {
                 videoContainer.style.display = 'flex';
                 remoteVideo.srcObject = remoteStream;
             } else {
                 remoteAudio.srcObject = remoteStream;
-                // Сразу применяем текущее положение ползунка к новому потоку
                 remoteAudio.volume = friendVolSlider.value / 100;
             }
         });
     });
 
-    connectBtn.addEventListener('click', () => {
-        const fId = friendIdInput.value.trim();
-        if (!fId) return alert("Сначала вставь ID!");
+    // Кнопка ручного подключения к другу по его НИКУ
+    connectBtn.addEventListener('click', async () => {
+        const fNick = friendNickInput.value.trim();
+        if (!fNick) return alert("Введите ник друга!");
 
-        statusDisplay.innerText = "Прямое подключение...";
-        const conn = peer.connect(fId);
+        statusDisplay.innerText = "Вычисляю ID и подключаюсь...";
+        // Генерируем ID друга по его нику
+        const targetPeerId = await generatePeerId(fNick);
+
+        const conn = peer.connect(targetPeerId);
         conn.on('open', () => setupDataConnection(conn));
 
         if (localAudioStream) {
-            const call = peer.call(fId, localAudioStream);
+            const call = peer.call(targetPeerId, localAudioStream);
             currentMediaCall = call;
             call.on('stream', (remoteStream) => {
                 remoteAudio.srcObject = remoteStream;
@@ -294,7 +298,6 @@
     screenBtn.addEventListener('click', async () => {
         try {
             screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-            
             videoContainer.style.display = 'flex';
             myBox.style.display = 'flex';
             localVideo.srcObject = screenStream;
@@ -317,9 +320,7 @@
     function stopScreen() {
         if (screenStream) screenStream.getTracks().forEach(track => track.stop());
         myBox.style.display = 'none';
-        if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().length === 0) {
-            videoContainer.style.display = 'none';
-        }
+        if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().length === 0) videoContainer.style.display = 'none';
         screenBtn.style.display = 'block';
         stopScreenBtn.style.display = 'none';
         
@@ -329,7 +330,7 @@
     }
     stopScreenBtn.addEventListener('click', stopScreen);
 
-    // Чат
+    // Отправка сообщений
     function sendMsg() {
         const text = msgInput.value.trim();
         if (!text || !currentDataConnection) return;
