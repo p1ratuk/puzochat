@@ -4,14 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P2P Чат и Демка</title>
-    <!-- Подключаем стабильную библиотеку PeerJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', -apple-system, sans-serif; background-color: #1e1e2e; color: #cdd6f4; display: flex; height: 100vh; margin: 0; overflow: hidden; }
         
-        /* Адаптивный интерфейс для ПК и мобилок */
-        #sidebar { width: 300px; background-color: #252538; padding: 20px; display: flex; flex-direction: column; border-right: 2px solid #313244; flex-shrink: 0; }
+        #sidebar { width: 300px; background-color: #252538; padding: 20px; display: flex; flex-direction: column; border-right: 2px solid #313244; flex-shrink: 0; overflow-y: auto; }
         #main-area { flex: 1; display: flex; flex-direction: column; background-color: #181825; height: 100%; }
         
         #chat-window { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
@@ -27,7 +25,11 @@
         button { background-color: #a6e3a1; color: #11111b; border: none; padding: 12px 15px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.95em; }
         button:disabled { background-color: #585b70; color: #7f849c; cursor: not-allowed; }
         
-        /* Сетка для стримов: на мобилках блоки встанут друг под друга */
+        /* Блок громкости */
+        .volume-control { margin: 15px 0; display: flex; flex-direction: column; gap: 8px; background: #181825; padding: 10px; border-radius: 6px; }
+        .volume-control label { font-size: 0.85em; color: #a6adc8; display: flex; justify-content: space-between; }
+        .volume-control input[type="range"] { width: 100%; accent-color: #a6e3a1; cursor: pointer; }
+
         #video-container { display: none; padding: 10px; background: #11111b; gap: 10px; justify-content: center; align-items: center; border-bottom: 2px solid #313244; flex-wrap: wrap; }
         .video-box { position: relative; background: #000; border-radius: 8px; overflow: hidden; display: flex; flex: 1; min-width: 240px; max-height: 250px; }
         .video-box span { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.7); padding: 3px 8px; border-radius: 4px; font-size: 0.75em; z-index: 10; font-weight: bold; }
@@ -54,8 +56,17 @@
         <input type="text" id="friend-id" placeholder="Вставь ID друга">
         <button id="connect-btn" disabled>Связаться</button>
     </div>
+
+    <!-- Регулировка звука -->
+    <div class="volume-control">
+        <label>Громкость друга: <span id="friend-vol-txt">100%</span></label>
+        <input type="range" id="friend-volume" min="0" max="200" value="100">
+        
+        <label>Твой микрофон: <span id="my-vol-txt">100%</span></label>
+        <input type="range" id="my-volume" min="0" max="300" value="100">
+    </div>
     
-    <button id="screen-btn" style="display: none; margin-top: 12px; background-color: #f38ba8; width: 100%;">Транслировать экран</button>
+    <button id="screen-btn" style="display: none; background-color: #f38ba8; width: 100%;">Транслировать экран</button>
     <button id="stop-screen-btn" style="display: none; margin-top: 12px; width: 100%; background-color: #74c7ec;">Выключить демку</button>
 </div>
 
@@ -85,11 +96,9 @@
     </div>
 </div>
 
-<!-- Тег для аудиопотока друга -->
 <audio id="remote-audio" autoplay playsinline></audio>
 
 <script>
-    // Подключаем надежные STUN сервера Google для обхода NAT и роутеров напрямую
     const peerConfig = {
         config: {
             'iceServers': [
@@ -107,7 +116,10 @@
     let currentMediaCall = null;
     let screenStream = null;
 
-    // Элементы интерфейса
+    // Переменные аудио-движка
+    let audioContext = null;
+    let gainNode = null; 
+
     const myIdDisplay = document.getElementById('my-id');
     const statusDisplay = document.getElementById('status');
     const friendIdInput = document.getElementById('friend-id');
@@ -124,6 +136,12 @@
     const videoContainer = document.getElementById('video-container');
     const myBox = document.getElementById('my-box');
     const remoteAudio = document.getElementById('remote-audio');
+    
+    // Элементы громкости
+    const friendVolSlider = document.getElementById('friend-volume');
+    const friendVolTxt = document.getElementById('friend-vol-txt');
+    const myVolSlider = document.getElementById('my-volume');
+    const myVolTxt = document.getElementById('my-vol-txt');
 
     function initPeer() {
         peer = new Peer(peerConfig);
@@ -135,13 +153,12 @@
         });
 
         peer.on('error', (err) => {
-            console.error('PeerJS Error:', err);
-            if (currentDataConnection && currentDataConnection.open) return; // Игнорируем ошибки сервера, если коннект уже прямой
+            if (currentDataConnection && currentDataConnection.open) return;
             statusDisplay.innerText = "Ошибка. Обновите страницу.";
         });
 
         peer.on('disconnected', () => {
-            console.log("Сигнальный сервер отключен. Канал связи P2P функционирует автономно.");
+            console.log("P2P автономен.");
         });
     }
 
@@ -149,10 +166,29 @@
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(stream => {
                 localAudioStream = stream;
+                
+                // Инициализируем Web Audio API для усиления/ослабления своего микрофона
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = audioContext.createMediaStreamSource(stream);
+                    gainNode = audioContext.createGain();
+                    
+                    // Связываем микрофон с усилителем
+                    source.connect(gainNode);
+                    
+                    // Создаем измененный поток, который и пойдет другу
+                    const destination = audioContext.createMediaStreamDestination();
+                    gainNode.connect(destination);
+                    
+                    // Подменяем оригинальный поток на поток с управляемой громкостью
+                    localAudioStream = destination.stream;
+                } catch(e) {
+                    console.error("AudioContext не поддерживается браузером", e);
+                }
+
                 statusDisplay.innerText = "Ожидание подключения...";
                 connectBtn.disabled = false;
             }).catch(err => {
-                console.warn("Микрофон заблокирован:", err);
                 statusDisplay.innerText = "Без микрофона (только чат)";
                 connectBtn.disabled = false;
             });
@@ -160,23 +196,36 @@
 
     initPeer();
 
-    // Кликер копирования
+    // Регулировка громкости ДРУГА (влияет на твой динамик)
+    friendVolSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        friendVolTxt.innerText = val + '%';
+        remoteAudio.volume = val / 100;
+    });
+
+    // Регулировка ТВОЕГО микрофона (усиливает твой звук для друга)
+    myVolSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        myVolTxt.innerText = val + '%';
+        if (gainNode) {
+            // min 0, max 3 (усиление в 3 раза от исходного)
+            gainNode.gain.value = val / 100;
+        }
+    });
+
     myIdDisplay.addEventListener('click', () => {
         if (myIdDisplay.innerText.includes("...")) return;
         navigator.clipboard.writeText(myIdDisplay.innerText)
-            .then(() => alert("ID успешно скопирован!"))
-            .catch(() => alert("Не удалось скопировать, выдели текст вручную."));
+            .then(() => alert("ID скопирован!"))
+            .catch(() => alert("Выдели текст вручную."));
     });
 
-    // Обработка успешного соединения (для обеих сторон)
     function setupDataConnection(conn) {
         currentDataConnection = conn;
         msgInput.disabled = false;
         sendBtn.disabled = false;
         fileBtn.disabled = false;
         
-        // На телефонах (iOS/Android) функция захвата экрана через getDisplayMedia часто заблокирована нативно, 
-        // поэтому кнопку демки показываем только если браузер её поддерживает
         if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
             screenBtn.style.display = 'block';
         }
@@ -184,7 +233,6 @@
         statusDisplay.innerText = "Соединение установлено! (P2P)";
         chatWindow.innerHTML = '<div class="msg friend" style="align-self: center; background: none; color: #a6e3a1;">Безопасный P2P-канал открыт!</div>';
 
-        // Отключаемся от главного сервера через 3 секунды, чтобы избежать кика по лимитам
         setTimeout(() => {
             if (peer && !peer.disconnected) {
                 peer.disconnect();
@@ -197,7 +245,7 @@
         });
 
         conn.on('close', () => {
-            statusDisplay.innerText = "Связь разорвана друг другом.";
+            statusDisplay.innerText = "Связь разорвана.";
             msgInput.disabled = true;
             sendBtn.disabled = true;
             fileBtn.disabled = true;
@@ -206,27 +254,24 @@
         });
     }
 
-    // Слушаем входящие текстовые запросы
     peer.on('connection', (conn) => setupDataConnection(conn));
     
-    // Слушаем входящие аудио/видео вызовы
     peer.on('call', (call) => {
         currentMediaCall = call;
-        call.answer(localAudioStream); // Отвечаем своим микрофоном
+        call.answer(localAudioStream);
         
         call.on('stream', (remoteStream) => {
-            // Если друг транслирует видеопоток (экран)
             if (remoteStream.getVideoTracks().length > 0) {
-                videoContainer.style.style.display = 'flex';
+                videoContainer.style.display = 'flex';
                 remoteVideo.srcObject = remoteStream;
             } else {
-                // Если идет только звук
                 remoteAudio.srcObject = remoteStream;
+                // Сразу применяем текущее положение ползунка к новому потоку
+                remoteAudio.volume = friendVolSlider.value / 100;
             }
         });
     });
 
-    // Инициация соединения кнопкой «Связаться»
     connectBtn.addEventListener('click', () => {
         const fId = friendIdInput.value.trim();
         if (!fId) return alert("Сначала вставь ID!");
@@ -240,11 +285,12 @@
             currentMediaCall = call;
             call.on('stream', (remoteStream) => {
                 remoteAudio.srcObject = remoteStream;
+                remoteAudio.volume = friendVolSlider.value / 100;
             });
         }
     });
 
-    // Логика захвата и раздачи экрана (Демка)
+    // Демка экрана
     screenBtn.addEventListener('click', async () => {
         try {
             screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
@@ -262,21 +308,14 @@
             if (currentMediaCall) currentMediaCall.close();
             
             currentMediaCall = peer.call(targetPeerId, combinedStream);
-            
             screenBtn.style.display = 'none';
             stopScreenBtn.style.display = 'block';
-
-            // Если остановили демку встроенной кнопкой браузера
             screenStream.getVideoTracks()[0].onended = () => stopScreen();
-        } catch (err) {
-            console.error("Не удалось запустить демку:", err);
-        }
+        } catch (err) { console.error(err); }
     });
 
     function stopScreen() {
-        if (screenStream) {
-            screenStream.getTracks().forEach(track => track.stop());
-        }
+        if (screenStream) screenStream.getTracks().forEach(track => track.stop());
         myBox.style.display = 'none';
         if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().length === 0) {
             videoContainer.style.display = 'none';
@@ -286,15 +325,11 @@
         
         const targetPeerId = currentDataConnection.peer;
         if (currentMediaCall) currentMediaCall.close();
-        
-        // Возвращаем только аудио
-        if (localAudioStream) {
-            currentMediaCall = peer.call(targetPeerId, localAudioStream);
-        }
+        if (localAudioStream) currentMediaCall = peer.call(targetPeerId, localAudioStream);
     }
     stopScreenBtn.addEventListener('click', stopScreen);
 
-    // Работа текстового чата и картинок
+    // Чат
     function sendMsg() {
         const text = msgInput.value.trim();
         if (!text || !currentDataConnection) return;
