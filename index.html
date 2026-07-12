@@ -83,6 +83,15 @@
             font-size: 0.8em;
             justify-content: center;
         }
+        .msg.error {
+            align-self: center;
+            background: #f38ba8;
+            color: #11111b;
+            text-align: center;
+            font-size: 0.8em;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
         .avatar {
             width: 32px;
             height: 32px;
@@ -106,6 +115,7 @@
             opacity: 0.6;
             margin-top: 2px;
         }
+        /* Стрим экрана / камеры */
         #screen-share-container {
             display: none;
             position: relative;
@@ -285,6 +295,12 @@
             font-size: 0.8em;
             padding: 8px 12px;
         }
+        .btn-clear-history {
+            background-color: #6c7086;
+            font-size: 0.75em;
+            padding: 6px 10px;
+            margin-top: 5px;
+        }
         #audio-containers { 
             display: none; 
         }
@@ -313,16 +329,49 @@
             color: #585b70;
             word-break: break-all;
             margin-top: 5px;
+            max-height: 100px;
+            overflow-y: auto;
         }
+        .history-info {
+            font-size: 0.7em;
+            color: #a6adc8;
+            margin-top: 5px;
+        }
+        /* Мобильная адаптация */
         @media (max-width: 768px) {
-            body { flex-direction: column; }
-            #sidebar { width: 100%; max-height: 42%; flex-shrink: 0; padding: 10px; gap: 6px; overflow-y: auto; }
-            #main-area { flex: 1; min-height: 0; }
-            #chat-window { flex: 1; padding: 10px; }
-            #input-area { padding: 10px; }
-            .room-box { font-size: 0.9em; padding: 8px; }
-            button { padding: 10px; font-size: 0.85em; }
-            #screen-share-container { max-height: 30%; }
+            body {
+                flex-direction: column;
+            }
+            #sidebar {
+                width: 100%;
+                max-height: 42%;
+                flex-shrink: 0;
+                padding: 10px;
+                gap: 6px;
+                overflow-y: auto;
+            }
+            #main-area {
+                flex: 1;
+                min-height: 0;
+            }
+            #chat-window {
+                flex: 1;
+                padding: 10px;
+            }
+            #input-area {
+                padding: 10px;
+            }
+            .room-box {
+                font-size: 0.9em;
+                padding: 8px;
+            }
+            button {
+                padding: 10px;
+                font-size: 0.85em;
+            }
+            #screen-share-container {
+                max-height: 30%;
+            }
         }
     </style>
 </head>
@@ -340,6 +389,9 @@
         
         <p style="font-size:0.7em;color:#585b70;margin-top:8px;">
             💡 Создавайте на ПК, заходите с телефона
+        </p>
+        <p style="font-size:0.7em;color:#585b70;">
+            📱 Демка экрана — только на ПК. На телефоне — камера
         </p>
     </div>
 </div>
@@ -362,12 +414,14 @@
         <input type="range" id="my-volume" min="0" max="200" value="100">
     </div>
 
-    <button id="screen-share-btn" class="btn-screen">🖥️ Демка экрана</button>
+    <button id="screen-share-btn" class="btn-screen">🖥️ Демка экрана (ПК)</button>
     <button id="camera-btn" class="btn-camera">📱 Включить камеру</button>
     <button id="switch-camera-btn" class="btn-switch-camera">🔄 Переключить камеру</button>
     <button id="refresh-audio-btn" class="btn-refresh">🔄 Переподключить звук</button>
+    <button id="clear-history-btn" class="btn-clear-history">🗑️ Очистить историю</button>
     <button id="leave-btn" class="btn-leave">🚪 Покинуть комнату</button>
     
+    <div class="history-info" id="history-info"></div>
     <div class="debug-info" id="debug-info"></div>
 </div>
 
@@ -379,7 +433,7 @@
     </div>
     <div id="chat-window">
         <div class="msg system">
-            <span>💬 Чат готов. Демка экрана и камера работают на ПК и телефоне!</span>
+            <span>💬 Чат готов. История сохраняется у хоста в памяти браузера.</span>
         </div>
     </div>
     
@@ -393,7 +447,10 @@
 
 <script>
     // ============ Утилиты ============
-    const avatars = ['🐱','🐶','🦊','🐸','🐵','🐼','🐨','🐯','🦁','🐮','🐷','🐰','🐻','🐔','🐧','🦄'];
+    const avatars = [
+        '🐱', '🐶', '🦊', '🐸', '🐵', '🐼', '🐨', '🐯',
+        '🦁', '🐮', '🐷', '🐰', '🐻', '🐔', '🐧', '🦄'
+    ];
     
     function getAvatar(seed) {
         let hash = 0;
@@ -410,12 +467,17 @@
                now.getMinutes().toString().padStart(2,'0');
     }
 
+    function getFullTimestamp() {
+        const now = new Date();
+        return now.toLocaleString('ru-RU');
+    }
+
     async function hashRoomName(name, prefix) {
         const clean = name.trim().toLowerCase();
         const msgBuffer = new TextEncoder().encode(clean);
         const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2,'0')).join('').substring(0,16);
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
         return `rm_${prefix}_${hashHex}`;
     }
 
@@ -423,9 +485,183 @@
         return /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent);
     }
 
-    // ============ DOM ============
+    // ============ Хранилище истории (localStorage) ============
+    const HISTORY_KEY_PREFIX = 'p2p_room_history_';
+    const LOGS_KEY_PREFIX = 'p2p_room_logs_';
+    const MAX_HISTORY_ITEMS = 500; // Максимальное количество сообщений
+    const MAX_LOG_ITEMS = 200;     // Максимальное количество логов
+
+    function getHistoryKey(roomName) {
+        return HISTORY_KEY_PREFIX + roomName.trim().toLowerCase();
+    }
+
+    function getLogsKey(roomName) {
+        return LOGS_KEY_PREFIX + roomName.trim().toLowerCase();
+    }
+
+    // Сохранение сообщения в историю
+    function saveMessageToHistory(roomName, messageData) {
+        if (!roomName) return;
+        try {
+            const key = getHistoryKey(roomName);
+            let history = [];
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                history = JSON.parse(stored);
+            }
+            
+            // Добавляем новое сообщение
+            history.push(messageData);
+            
+            // Ограничиваем размер истории
+            if (history.length > MAX_HISTORY_ITEMS) {
+                history = history.slice(-MAX_HISTORY_ITEMS);
+            }
+            
+            localStorage.setItem(key, JSON.stringify(history));
+            updateHistoryInfo(roomName);
+        } catch (e) {
+            console.error('Ошибка сохранения истории:', e);
+            // Если localStorage переполнен — очищаем старые записи
+            if (e.name === 'QuotaExceededError') {
+                try {
+                    // Удаляем половину старых сообщений
+                    const key = getHistoryKey(roomName);
+                    let history = JSON.parse(localStorage.getItem(key) || '[]');
+                    history = history.slice(-Math.floor(MAX_HISTORY_ITEMS / 2));
+                    localStorage.setItem(key, JSON.stringify(history));
+                } catch (e2) {
+                    console.error('Не удалось очистить историю:', e2);
+                }
+            }
+        }
+    }
+
+    // Сохранение лога/ошибки
+    function saveLogToHistory(roomName, logData) {
+        if (!roomName) return;
+        try {
+            const key = getLogsKey(roomName);
+            let logs = [];
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                logs = JSON.parse(stored);
+            }
+            
+            logs.push(logData);
+            
+            if (logs.length > MAX_LOG_ITEMS) {
+                logs = logs.slice(-MAX_LOG_ITEMS);
+            }
+            
+            localStorage.setItem(key, JSON.stringify(logs));
+        } catch (e) {
+            console.error('Ошибка сохранения логов:', e);
+        }
+    }
+
+    // Загрузка истории сообщений
+    function loadMessageHistory(roomName) {
+        if (!roomName) return [];
+        try {
+            const key = getHistoryKey(roomName);
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                return JSON.parse(stored);
+            }
+        } catch (e) {
+            console.error('Ошибка загрузки истории:', e);
+        }
+        return [];
+    }
+
+    // Загрузка логов
+    function loadLogHistory(roomName) {
+        if (!roomName) return [];
+        try {
+            const key = getLogsKey(roomName);
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                return JSON.parse(stored);
+            }
+        } catch (e) {
+            console.error('Ошибка загрузки логов:', e);
+        }
+        return [];
+    }
+
+    // Очистка истории комнаты
+    function clearRoomHistory(roomName) {
+        if (!roomName) return;
+        try {
+            localStorage.removeItem(getHistoryKey(roomName));
+            localStorage.removeItem(getLogsKey(roomName));
+            updateHistoryInfo(roomName);
+        } catch (e) {
+            console.error('Ошибка очистки истории:', e);
+        }
+    }
+
+    // Обновление информации о количестве сохранённых записей
+    function updateHistoryInfo(roomName) {
+        const historyInfo = document.getElementById('history-info');
+        if (!historyInfo || !roomName) return;
+        
+        const msgCount = loadMessageHistory(roomName).length;
+        const logCount = loadLogHistory(roomName).length;
+        
+        if (msgCount > 0 || logCount > 0) {
+            historyInfo.innerText = `💾 Сохранено: ${msgCount} сообщений, ${logCount} логов`;
+        } else {
+            historyInfo.innerText = '';
+        }
+    }
+
+    // Восстановление истории в чате
+    function restoreHistoryToChat(roomName) {
+        if (!roomName) return;
+        
+        const messages = loadMessageHistory(roomName);
+        const logs = loadLogHistory(roomName);
+        
+        if (messages.length > 0 || logs.length > 0) {
+            addSystemMessage(`📂 Загружена история: ${messages.length} сообщений, ${logs.length} логов`);
+            
+            // Восстанавливаем логи
+            logs.forEach(log => {
+                if (log.type === 'error') {
+                    addErrorMessage(log.text, log.time, true);
+                } else if (log.type === 'system') {
+                    addSystemMessage(log.text, true);
+                } else {
+                    addSystemMessage(`📋 ${log.text}`, true);
+                }
+            });
+            
+            // Восстанавливаем сообщения
+            messages.forEach(msg => {
+                if (msg.type === 'text' && msg.from === myPeerId) {
+                    addMessageToChat(msg.text, 'me', '', msg.time, true);
+                } else if (msg.type === 'text') {
+                    addMessageToChat(msg.text, 'friend', msg.from || '', msg.time, true);
+                } else if (msg.type === 'system') {
+                    addSystemMessage(msg.text, true);
+                }
+            });
+            
+            // Разделитель
+            if (messages.length > 0 || logs.length > 0) {
+                addSystemMessage('━━━ 🔽 Новые сообщения 🔽 ━━━');
+            }
+        }
+    }
+
+    // ============ DOM элементы ============
     const loginOverlay = document.getElementById('login-overlay');
     const roomInput = document.getElementById('room-input');
+    const createRoomBtn = document.getElementById('create-room-btn');
+    const createMegaBtn = document.getElementById('create-mega-btn');
+    const joinRoomBtn = document.getElementById('join-room-btn');
     const roomDisplay = document.getElementById('room-display');
     const statusDisplay = document.getElementById('status');
     const peersCount = document.getElementById('peers-count');
@@ -436,6 +672,9 @@
     const audioContainers = document.getElementById('audio-containers');
     const myVolSlider = document.getElementById('my-volume');
     const myVolTxt = document.getElementById('my-vol-txt');
+    const leaveBtn = document.getElementById('leave-btn');
+    const refreshAudioBtn = document.getElementById('refresh-audio-btn');
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
     const debugInfo = document.getElementById('debug-info');
     const screenShareBtn = document.getElementById('screen-share-btn');
     const cameraBtn = document.getElementById('camera-btn');
@@ -444,8 +683,7 @@
     const screenVideo = document.getElementById('screen-video');
     const stopScreenBtn = document.getElementById('stop-screen-btn');
     const screenShareLabel = document.getElementById('screen-share-label');
-    const refreshAudioBtn = document.getElementById('refresh-audio-btn');
-    const leaveBtn = document.getElementById('leave-btn');
+    const historyInfo = document.getElementById('history-info');
 
     // ============ Состояние ============
     let peer = null;
@@ -464,36 +702,54 @@
     let hostPeerId = null;
     let isSharingScreen = false;
     let isSharingCamera = false;
-    let currentCameraFacing = 'user'; // 'user' = фронталка, 'environment' = задняя
+    let currentCameraFacing = 'user';
+    let currentRoomName = '';
+    let historyRestored = false;
 
-    // ============ Аудио ============
+    // ============ Аудио контекст ============
     function ensureAudio() {
-        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioContext.state === 'suspended') audioContext.resume();
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
     }
+
     document.addEventListener('click', ensureAudio);
     document.addEventListener('touchstart', ensureAudio);
 
+    // ============ Микрофон ============
     async function getMicrophone() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }, 
                 video: false 
             });
+            
             ensureAudio();
             const source = audioContext.createMediaStreamSource(stream);
             gainNode = audioContext.createGain();
             source.connect(gainNode);
-            const dest = audioContext.createMediaStreamDestination();
-            gainNode.connect(dest);
-            localAudioStream = dest.stream;
+            
+            const destination = audioContext.createMediaStreamDestination();
+            gainNode.connect(destination);
+            
+            localAudioStream = destination.stream;
             statusDisplay.innerText = '🎤 Микрофон готов';
             debug('Микрофон получен');
+            logToHistory('system', 'Микрофон успешно активирован');
             return true;
         } catch (err) {
             console.warn('Микрофон не доступен:', err);
             statusDisplay.innerText = '⚠️ Без микрофона';
-            debug('Ошибка микрофона: ' + err.message);
+            const errMsg = 'Ошибка микрофона: ' + err.message;
+            debug(errMsg);
+            logToHistory('error', errMsg);
             return false;
         }
     }
@@ -501,89 +757,49 @@
     function debug(msg) {
         console.log('[DEBUG]', msg);
         debugInfo.innerText = msg;
-    }
-
-    // ============ Камера с переключением ============
-    async function startCameraShare(facingMode = 'user') {
-        try {
-            // Останавливаем предыдущую камеру
-            if (localCameraStream) {
-                localCameraStream.getTracks().forEach(t => t.stop());
-                localCameraStream = null;
-            }
-            if (isSharingScreen) stopScreenShare();
-            
-            const constraints = {
-                video: {
-                    facingMode: facingMode,
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: false
-            };
-            
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            localCameraStream = stream;
-            currentCameraFacing = facingMode;
-            
-            screenVideo.srcObject = stream;
-            screenShareContainer.classList.add('active');
-            screenShareLabel.innerText = facingMode === 'user' ? '📱 Фронтальная камера' : '📱 Основная камера';
-            cameraBtn.classList.add('active');
-            cameraBtn.innerText = '📱 Камера работает... (стоп)';
-            switchCameraBtn.classList.add('visible');
-            isSharingCamera = true;
-            
-            // Закрываем старые видео-звонки и шлём новый стрим
-            closeAllVideoCalls();
-            broadcastVideo(stream, 'camera');
-            
-            stream.getVideoTracks()[0].addEventListener('ended', () => stopCameraShare());
-            
-            addMessage(`📱 Камера включена (${facingMode === 'user' ? 'фронтальная' : 'основная'})`, 'system');
-            debug('Камера запущена: ' + facingMode);
-            
-        } catch (err) {
-            console.error('Ошибка камеры:', err);
-            debug('Ошибка камеры: ' + err.message);
-            if (err.name === 'NotAllowedError') addMessage('⚠️ Доступ к камере запрещён.', 'system');
-            else if (err.name === 'NotFoundError') addMessage('⚠️ Камера не найдена.', 'system');
-            else addMessage('❌ Ошибка камеры: ' + err.message, 'system');
+        // Сохраняем важные логи
+        if (currentRoomName && amIHost) {
+            saveLogToHistory(currentRoomName, {
+                type: 'debug',
+                text: msg,
+                time: getFullTimestamp()
+            });
         }
     }
 
-    function stopCameraShare() {
-        if (localCameraStream) {
-            localCameraStream.getTracks().forEach(t => t.stop());
-            localCameraStream = null;
-        }
-        closeAllVideoCalls();
-        screenVideo.srcObject = null;
-        screenShareContainer.classList.remove('active');
-        screenShareLabel.innerText = '📺 Трансляция';
-        cameraBtn.classList.remove('active');
-        cameraBtn.innerText = '📱 Включить камеру';
-        switchCameraBtn.classList.remove('visible');
-        isSharingCamera = false;
-        addMessage('📱 Камера выключена', 'system');
-        debug('Камера остановлена');
+    function logToHistory(type, text) {
+        if (!currentRoomName || !amIHost) return;
+        saveLogToHistory(currentRoomName, {
+            type: type,
+            text: text,
+            time: getFullTimestamp()
+        });
     }
 
-    function switchCamera() {
-        if (!isSharingCamera) return;
-        const newFacing = currentCameraFacing === 'user' ? 'environment' : 'user';
-        debug('Переключение камеры на: ' + newFacing);
-        startCameraShare(newFacing);
-    }
-
-    // ============ Экран ============
+    // ============ Экран (только ПК) ============
     async function startScreenShare() {
+        // Проверяем поддержку getDisplayMedia
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            const errMsg = 'Демка экрана не поддерживается на этом устройстве. Используйте камеру.';
+            addErrorMessage(errMsg);
+            debug(errMsg);
+            logToHistory('error', errMsg);
+            return;
+        }
+        
         try {
             const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+                video: {
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30 }
+                },
                 audio: true
             });
-            if (isSharingCamera) stopCameraShare();
+            
+            if (isSharingCamera) {
+                stopCameraShare();
+            }
             
             localScreenStream = stream;
             screenVideo.srcObject = stream;
@@ -596,31 +812,136 @@
             closeAllVideoCalls();
             broadcastVideo(stream, 'screen');
             
-            stream.getVideoTracks()[0].addEventListener('ended', () => stopScreenShare());
-            addMessage('🖥️ Демка экрана запущена', 'system');
-            debug('Экран шарится');
+            stream.getVideoTracks()[0].addEventListener('ended', () => {
+                stopScreenShare();
+            });
+            
+            const msg = 'Демка экрана запущена';
+            addSystemMessage('🖥️ ' + msg);
+            debug(msg);
+            logToHistory('system', msg);
+            
         } catch (err) {
-            console.error('Ошибка экрана:', err);
-            debug('Ошибка экрана: ' + err.message);
-            if (isMobile()) addMessage('⚠️ Шеринг экрана не работает в этом браузере. Попробуйте камеру.', 'system');
-            else addMessage('❌ Не удалось: ' + err.message, 'system');
+            console.error('Ошибка шеринга экрана:', err);
+            const errMsg = 'Ошибка демки: ' + err.message;
+            debug(errMsg);
+            addErrorMessage('❌ ' + errMsg);
+            logToHistory('error', errMsg);
         }
     }
 
     function stopScreenShare() {
         if (localScreenStream) {
-            localScreenStream.getTracks().forEach(t => t.stop());
+            localScreenStream.getTracks().forEach(track => track.stop());
             localScreenStream = null;
         }
+        
         closeAllVideoCalls();
+        
         screenVideo.srcObject = null;
         screenShareContainer.classList.remove('active');
         screenShareLabel.innerText = '📺 Трансляция';
         screenShareBtn.classList.remove('active');
-        screenShareBtn.innerText = '🖥️ Демка экрана';
+        screenShareBtn.innerText = '🖥️ Демка экрана (ПК)';
         isSharingScreen = false;
-        addMessage('🖥️ Демка остановлена', 'system');
-        debug('Экран остановлен');
+        
+        const msg = 'Демка экрана остановлена';
+        addSystemMessage('🖥️ ' + msg);
+        debug(msg);
+        logToHistory('system', msg);
+    }
+
+    // ============ Камера с переключением ============
+    async function startCameraShare(facingMode = 'user') {
+        try {
+            // Останавливаем предыдущую камеру
+            if (localCameraStream) {
+                localCameraStream.getTracks().forEach(track => track.stop());
+                localCameraStream = null;
+            }
+            if (isSharingScreen) {
+                stopScreenShare();
+            }
+            
+            const constraints = {
+                video: {
+                    facingMode: facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            localCameraStream = stream;
+            currentCameraFacing = facingMode;
+            
+            screenVideo.srcObject = stream;
+            screenShareContainer.classList.add('active');
+            screenShareLabel.innerText = facingMode === 'user' ? '📱 Фронтальная камера' : '📱 Основная камера';
+            cameraBtn.classList.add('active');
+            cameraBtn.innerText = '📱 Камера работает... (стоп)';
+            switchCameraBtn.classList.add('visible');
+            isSharingCamera = true;
+            
+            closeAllVideoCalls();
+            broadcastVideo(stream, 'camera');
+            
+            stream.getVideoTracks()[0].addEventListener('ended', () => {
+                stopCameraShare();
+            });
+            
+            const camName = facingMode === 'user' ? 'фронтальная' : 'основная';
+            const msg = `Камера включена (${camName})`;
+            addSystemMessage('📱 ' + msg);
+            debug(msg);
+            logToHistory('system', msg);
+            
+        } catch (err) {
+            console.error('Ошибка камеры:', err);
+            const errMsg = 'Ошибка камеры: ' + err.message;
+            debug(errMsg);
+            
+            if (err.name === 'NotAllowedError') {
+                addErrorMessage('⚠️ Доступ к камере запрещён. Разрешите в настройках браузера.');
+            } else if (err.name === 'NotFoundError') {
+                addErrorMessage('⚠️ Камера не найдена на устройстве.');
+            } else {
+                addErrorMessage('❌ ' + errMsg);
+            }
+            logToHistory('error', errMsg);
+        }
+    }
+
+    function stopCameraShare() {
+        if (localCameraStream) {
+            localCameraStream.getTracks().forEach(track => track.stop());
+            localCameraStream = null;
+        }
+        
+        closeAllVideoCalls();
+        
+        screenVideo.srcObject = null;
+        screenShareContainer.classList.remove('active');
+        screenShareLabel.innerText = '📺 Трансляция';
+        cameraBtn.classList.remove('active');
+        cameraBtn.innerText = '📱 Включить камеру';
+        switchCameraBtn.classList.remove('visible');
+        isSharingCamera = false;
+        
+        const msg = 'Камера выключена';
+        addSystemMessage('📱 ' + msg);
+        debug(msg);
+        logToHistory('system', msg);
+    }
+
+    function switchCamera() {
+        if (!isSharingCamera) return;
+        const newFacing = currentCameraFacing === 'user' ? 'environment' : 'user';
+        const msg = 'Переключение камеры на: ' + (newFacing === 'user' ? 'фронтальную' : 'основную');
+        debug(msg);
+        startCameraShare(newFacing);
     }
 
     // ============ Видео-звонки ============
@@ -636,180 +957,448 @@
 
     function setupVideoCall(call, peerId, type) {
         videoCalls.push(call);
-        debug(`Видео (${type}) с: ` + peerId.substring(0,8));
+        const peerShort = peerId.substring(0, 8);
+        debug(`Видео-звонок (${type}) установлен с: ${peerShort}`);
+        
         call.on('close', () => {
             videoCalls = videoCalls.filter(c => c.peer !== peerId);
             updatePeersUI();
+            debug(`Видео-звонок закрыт: ${peerShort}`);
         });
-        call.on('error', e => debug('Ошибка видео: ' + e.message));
+        
+        call.on('error', (err) => {
+            const errMsg = `Ошибка видео-звонка: ${err.message}`;
+            debug(errMsg);
+            logToHistory('error', errMsg);
+        });
     }
 
     function closeAllVideoCalls() {
-        videoCalls.forEach(c => { try { c.close(); } catch(e) {} });
+        videoCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
         videoCalls = [];
         updatePeersUI();
     }
 
     function receiveVideoStream(stream, peerId, type) {
-        const peerShort = peerId.substring(0,8);
-        const label = type === 'camera' ? '📱 Камера' : '🖥️ Экран';
-        screenShareLabel.innerText = `${label} от ${peerShort}...`;
+        const peerShort = peerId.substring(0, 8);
+        const typeLabel = type === 'camera' ? '📱 Камера' : '🖥️ Экран';
+        
+        screenShareLabel.innerText = `${typeLabel} от ${peerShort}...`;
         screenVideo.srcObject = stream;
         screenShareContainer.classList.add('active');
+        
         stream.getVideoTracks()[0].addEventListener('ended', () => {
             screenVideo.srcObject = null;
             screenShareContainer.classList.remove('active');
             screenShareLabel.innerText = '📺 Трансляция';
+            const msg = `${typeLabel} от ${peerShort}... завершилась`;
+            addSystemMessage(msg);
+            logToHistory('system', msg);
         });
-        addMessage(`${label} от ${peerShort}...`, 'system');
+        
+        const msg = `${typeLabel} от ${peerShort}...`;
+        addSystemMessage(msg);
+        debug(`Получен видео-стрим (${type}) от: ${peerShort}`);
+        logToHistory('system', msg);
     }
 
-    // ============ UI ============
+    // ============ Интерфейс ============
     function updatePeersUI() {
-        peersCount.innerText = `👥 Участников: ${dataConnections.length + 1}`;
+        const count = dataConnections.length + 1;
+        peersCount.innerText = `👥 Участников: ${count}`;
+        
         let html = `<div class="peer-item"><span class="peer-dot"></span> Вы ${myAvatar}</div>`;
         dataConnections.forEach(conn => {
-            const ps = conn.peer.substring(0,8);
+            const peerShort = conn.peer.substring(0, 8);
+            const ava = getAvatar(conn.peer);
             const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
             const hasVideo = videoCalls.some(c => c.peer === conn.peer);
-            html += `<div class="peer-item"><span class="peer-dot"></span> ${ps}... ${getAvatar(conn.peer)} ${hasAudio?'🔊':'🔇'}${hasVideo?' 📹':''}</div>`;
+            const audioIcon = hasAudio ? '🔊' : '🔇';
+            const videoIcon = hasVideo ? ' 📹' : '';
+            html += `<div class="peer-item"><span class="peer-dot"></span> ${peerShort}... ${ava} ${audioIcon}${videoIcon}</div>`;
         });
         peersList.innerHTML = html;
     }
 
-    function addMessage(text, type, peerId = '') {
-        const div = document.createElement('div');
-        div.className = `msg ${type}`;
-        if (type === 'system') {
-            div.innerHTML = `<span>${text}</span>`;
-        } else {
-            const ava = type === 'me' ? myAvatar : getAvatar(peerId);
-            div.innerHTML = `<div class="avatar">${ava}</div><div class="msg-content"><div>${escapeHtml(text)}</div><div class="msg-time">${getTime()}</div></div>`;
-        }
-        chatWindow.appendChild(div);
+    function addSystemMessage(text, skipSave = false) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'msg system';
+        msgDiv.innerHTML = `<span>${text}</span>`;
+        chatWindow.appendChild(msgDiv);
         chatWindow.scrollTop = chatWindow.scrollHeight;
+        
+        if (!skipSave && currentRoomName && amIHost) {
+            saveMessageToHistory(currentRoomName, {
+                type: 'system',
+                text: text,
+                time: getFullTimestamp()
+            });
+        }
     }
 
-    function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+    function addErrorMessage(text, skipSave = false) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'msg error';
+        msgDiv.innerHTML = `<span>${text}</span>`;
+        chatWindow.appendChild(msgDiv);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+        
+        if (!skipSave && currentRoomName) {
+            saveLogToHistory(currentRoomName, {
+                type: 'error',
+                text: text,
+                time: getFullTimestamp()
+            });
+        }
+    }
 
-    // ============ Сообщения ============
+    function addMessageToChat(text, type, peerId = '', timeStr = null, skipSave = false) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${type}`;
+        
+        if (type === 'system') {
+            msgDiv.innerHTML = `<span>${text}</span>`;
+        } else {
+            const ava = type === 'me' ? myAvatar : getAvatar(peerId);
+            const displayTime = timeStr || getTime();
+            
+            msgDiv.innerHTML = `
+                <div class="avatar">${ava}</div>
+                <div class="msg-content">
+                    <div>${escapeHtml(text)}</div>
+                    <div class="msg-time">${displayTime}</div>
+                </div>
+            `;
+        }
+        
+        chatWindow.appendChild(msgDiv);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+        
+        if (!skipSave && currentRoomName && amIHost) {
+            saveMessageToHistory(currentRoomName, {
+                type: 'text',
+                text: text,
+                from: type === 'me' ? myPeerId : (peerId || 'unknown'),
+                time: timeStr || getFullTimestamp(),
+                msgType: type
+            });
+        }
+    }
+
+    // Универсальная функция (заменяет старую addMessage)
+    function addMessage(text, type, peerId = '') {
+        addMessageToChat(text, type, peerId);
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ============ Отправка сообщений ============
     function sendMessage() {
         const text = msgInput.value.trim();
         if (!text) return;
-        const payload = { type: 'text', text, from: myPeerId, time: getTime() };
-        dataConnections.forEach(c => { if (c.open) c.send(payload); });
-        addMessage(text, 'me');
+        
+        const payload = { 
+            type: 'text', 
+            text: text,
+            from: myPeerId,
+            time: getFullTimestamp()
+        };
+        
+        // Отправляем всем подключённым
+        dataConnections.forEach(conn => {
+            if (conn.open) {
+                conn.send(payload);
+            }
+        });
+        
+        // Отображаем у себя
+        addMessageToChat(text, 'me');
         msgInput.value = '';
-        if (dataConnections.length === 0) addMessage('⚠️ Нет участников. Сообщение видно только вам.', 'system');
+        
+        // Если нет подключённых — предупреждаем
+        if (dataConnections.length === 0) {
+            addSystemMessage('⚠️ Нет подключённых участников. Сообщение видно только вам.');
+        }
     }
-    sendBtn.onclick = sendMessage;
-    msgInput.onkeypress = e => { if (e.key === 'Enter') sendMessage(); };
 
-    // ============ Data ============
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    // ============ Data Connection ============
     function setupDataConnection(conn) {
-        if (dataConnections.find(c => c.peer === conn.peer)) return;
+        // Проверяем на дубликаты
+        if (dataConnections.find(c => c.peer === conn.peer)) {
+            debug('Дубликат data соединения: ' + conn.peer.substring(0, 8));
+            return;
+        }
+        
         dataConnections.push(conn);
         updatePeersUI();
-        const ps = conn.peer.substring(0,8);
-        addMessage(`🔗 ${ps}... подключился`, 'system');
-        debug('Data: ' + ps);
         
-        // Отправляем активные стримы новому
+        const peerShort = conn.peer.substring(0, 8);
+        const connectMsg = `Участник ${peerShort}... подключился`;
+        addSystemMessage('🔗 ' + connectMsg);
+        debug('Data соединение установлено: ' + peerShort);
+        logToHistory('system', connectMsg);
+        
+        // Отправляем активные стримы новому участнику
         if (isSharingScreen && localScreenStream && peer) {
-            setTimeout(() => { const call = peer.call(conn.peer, localScreenStream); setupVideoCall(call, conn.peer, 'screen'); }, 500);
+            setTimeout(() => {
+                const call = peer.call(conn.peer, localScreenStream);
+                setupVideoCall(call, conn.peer, 'screen');
+            }, 500);
         }
         if (isSharingCamera && localCameraStream && peer) {
-            setTimeout(() => { const call = peer.call(conn.peer, localCameraStream); setupVideoCall(call, conn.peer, 'camera'); }, 700);
+            setTimeout(() => {
+                const call = peer.call(conn.peer, localCameraStream);
+                setupVideoCall(call, conn.peer, 'camera');
+            }, 700);
         }
         
-        conn.on('data', data => {
+        // Отправляем историю сообщений новому гостю
+        if (amIHost && currentRoomName) {
+            setTimeout(() => {
+                const history = loadMessageHistory(currentRoomName);
+                if (history.length > 0) {
+                    // Отправляем последние 50 сообщений чтобы не перегружать
+                    const recentHistory = history.slice(-50);
+                    conn.send({
+                        type: 'history',
+                        messages: recentHistory,
+                        from: myPeerId
+                    });
+                    
+                    // Также отправляем логи
+                    const logs = loadLogHistory(currentRoomName);
+                    if (logs.length > 0) {
+                        const recentLogs = logs.slice(-30);
+                        conn.send({
+                            type: 'logs',
+                            messages: recentLogs,
+                            from: myPeerId
+                        });
+                    }
+                }
+            }, 1000);
+        }
+        
+        conn.on('data', (data) => {
             if (data.type === 'text') {
-                addMessage(data.text, 'friend', data.from || conn.peer);
+                // Отображаем сообщение
+                addMessageToChat(data.text, 'friend', data.from || conn.peer, data.time);
+                
+                // Если хост в мега-комнате — пересылаем остальным
                 if (amIHost && isMegaRoom) {
-                    dataConnections.forEach(c => { if (c.peer !== conn.peer && c.open) c.send(data); });
+                    dataConnections.forEach(c => {
+                        if (c.peer !== conn.peer && c.open) {
+                            c.send(data);
+                        }
+                    });
+                }
+            } else if (data.type === 'history') {
+                // Получаем историю от хоста
+                if (data.messages && Array.isArray(data.messages)) {
+                    addSystemMessage('📂 Получена история чата от хоста');
+                    data.messages.forEach(msg => {
+                        if (msg.type === 'system' || msg.msgType === 'system') {
+                            addSystemMessage(msg.text, true);
+                        } else if (msg.from === myPeerId || msg.msgType === 'me') {
+                            addMessageToChat(msg.text, 'me', '', msg.time, true);
+                        } else {
+                            addMessageToChat(msg.text, 'friend', msg.from || '', msg.time, true);
+                        }
+                    });
+                    addSystemMessage('━━━ 🔽 Текущие сообщения 🔽 ━━━');
+                }
+            } else if (data.type === 'logs') {
+                // Получаем логи от хоста
+                if (data.messages && Array.isArray(data.messages)) {
+                    data.messages.forEach(log => {
+                        if (log.type === 'error') {
+                            addErrorMessage(log.text, true);
+                        } else {
+                            addSystemMessage(`📋 ${log.text}`, true);
+                        }
+                    });
                 }
             }
         });
         
         conn.on('close', () => {
+            const peerShort = conn.peer.substring(0, 8);
             dataConnections = dataConnections.filter(c => c.peer !== conn.peer);
-            [mediaCalls, videoCalls].forEach(arr => {
-                const found = arr.find(c => c.peer === conn.peer);
-                if (found) { try { found.close(); } catch(e) {} }
-            });
-            mediaCalls = mediaCalls.filter(c => c.peer !== conn.peer);
-            videoCalls = videoCalls.filter(c => c.peer !== conn.peer);
+            
+            // Закрываем связанные звонки
+            const audioCall = mediaCalls.find(c => c.peer === conn.peer);
+            if (audioCall) {
+                try { audioCall.close(); } catch(e) {}
+                mediaCalls = mediaCalls.filter(c => c.peer !== conn.peer);
+            }
+            
+            const videoCall = videoCalls.find(c => c.peer === conn.peer);
+            if (videoCall) {
+                try { videoCall.close(); } catch(e) {}
+                videoCalls = videoCalls.filter(c => c.peer !== conn.peer);
+            }
+            
             updatePeersUI();
-            addMessage(`🔌 ${ps}... отключился`, 'system');
+            
+            const disconnectMsg = `Участник ${peerShort}... отключился`;
+            addSystemMessage('🔌 ' + disconnectMsg);
+            debug('Data соединение закрыто: ' + peerShort);
+            logToHistory('system', disconnectMsg);
+            
+            // Проверяем, не остался ли включённым чужой стрим
             if (screenVideo.srcObject && videoCalls.length === 0 && !isSharingScreen && !isSharingCamera) {
                 screenVideo.srcObject = null;
                 screenShareContainer.classList.remove('active');
                 screenShareLabel.innerText = '📺 Трансляция';
             }
         });
-        conn.on('error', e => debug('Data error: ' + e.message));
+        
+        conn.on('error', (err) => {
+            const errMsg = 'Ошибка data соединения: ' + err.message;
+            debug(errMsg);
+            logToHistory('error', errMsg);
+        });
     }
 
     // ============ Аудио-звонки ============
     function setupMediaCall(call) {
         if (mediaCalls.find(c => c.peer === call.peer)) {
-            try { mediaCalls.find(c => c.peer === call.peer).close(); } catch(e) {}
+            debug('Дубликат аудио-звонка: ' + call.peer.substring(0, 8));
+            const old = mediaCalls.find(c => c.peer === call.peer);
+            try { old.close(); } catch(e) {}
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
         }
+        
         mediaCalls.push(call);
         updatePeersUI();
         
-        const audio = document.createElement('audio');
-        audio.autoplay = true;
-        audio.playsinline = true;
-        audioContainers.appendChild(audio);
-        const ps = call.peer.substring(0,8);
-        debug('Аудио-звонок: ' + ps);
+        const audioElem = document.createElement('audio');
+        audioElem.id = 'audio-' + call.peer.substring(0, 8);
+        audioElem.autoplay = true;
+        audioElem.playsinline = true;
+        audioElem.controls = false;
+        audioContainers.appendChild(audioElem);
         
-        call.on('stream', stream => {
-            audio.srcObject = stream;
-            audio.play().catch(() => {});
-            debug('Аудио-поток от: ' + ps);
+        const peerShort = call.peer.substring(0, 8);
+        debug('Аудио-звонок установлен: ' + peerShort);
+        
+        call.on('stream', (remoteStream) => {
+            debug('Аудио-поток получен от: ' + peerShort);
+            audioElem.srcObject = remoteStream;
+            
+            const playPromise = audioElem.play();
+            if (playPromise) {
+                playPromise.then(() => {
+                    debug('Аудио играет от: ' + peerShort);
+                    const audioMsg = `Звук от ${peerShort}... работает`;
+                    addSystemMessage('🔊 ' + audioMsg);
+                    logToHistory('system', audioMsg);
+                }).catch((e) => {
+                    debug('Ожидание клика для звука от: ' + peerShort);
+                    addSystemMessage('👆 Коснитесь экрана для включения звука');
+                });
+            }
         });
+        
         call.on('close', () => {
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
-            audio.remove();
+            audioElem.remove();
             updatePeersUI();
+            debug('Аудио-звонок закрыт: ' + peerShort);
         });
-        call.on('error', e => debug('Аудио error: ' + e.message));
+        
+        call.on('error', (err) => {
+            const errMsg = 'Ошибка аудио-звонка: ' + err.message;
+            debug(errMsg);
+            logToHistory('error', errMsg);
+        });
     }
 
     function callPeerAudio(peerId) {
-        if (!localAudioStream || !peer) return;
-        const old = mediaCalls.find(c => c.peer === peerId);
-        if (old) { try { old.close(); } catch(e) {}; mediaCalls = mediaCalls.filter(c => c.peer !== peerId); }
-        debug('Звоним аудио: ' + peerId.substring(0,8));
+        if (!localAudioStream) {
+            debug('Нет микрофона для звонка к: ' + peerId.substring(0, 8));
+            return;
+        }
+        
+        if (!peer || !peer.id) {
+            debug('Peer не готов для звонка');
+            return;
+        }
+        
+        const oldCall = mediaCalls.find(c => c.peer === peerId);
+        if (oldCall) {
+            try { oldCall.close(); } catch(e) {}
+            mediaCalls = mediaCalls.filter(c => c.peer !== peerId);
+        }
+        
+        debug('Звоним (аудио): ' + peerId.substring(0, 8));
         const call = peer.call(peerId, localAudioStream);
         setupMediaCall(call);
     }
 
     function refreshAllAudio() {
-        mediaCalls.forEach(c => { try { c.close(); } catch(e) {} });
+        debug('Переподключение звука...');
+        logToHistory('system', 'Ручное переподключение звука');
+        
+        // Закрываем все текущие аудио-звонки
+        mediaCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
         mediaCalls = [];
+        
+        // Очищаем аудио-элементы
         audioContainers.innerHTML = '';
         
         if (amIHost) {
-            dataConnections.forEach(conn => setTimeout(() => callPeerAudio(conn.peer), 300));
-            addMessage('🔄 Хост переподключает звук...', 'system');
+            // Хост переподключает всех гостей
+            dataConnections.forEach(conn => {
+                setTimeout(() => {
+                    callPeerAudio(conn.peer);
+                }, 300);
+            });
+            addSystemMessage('🔄 Хост переподключает звук всем участникам...');
         } else if (hostPeerId) {
-            setTimeout(() => callPeerAudio(hostPeerId), 300);
-            addMessage('🔄 Переподключение звука...', 'system');
+            // Гость переподключается к хосту
+            setTimeout(() => {
+                callPeerAudio(hostPeerId);
+            }, 300);
+            addSystemMessage('🔄 Переподключение звука к хосту...');
         }
         
-        if (isSharingScreen && localScreenStream) { closeAllVideoCalls(); setTimeout(() => broadcastVideo(localScreenStream, 'screen'), 500); }
-        if (isSharingCamera && localCameraStream) { closeAllVideoCalls(); setTimeout(() => broadcastVideo(localCameraStream, 'camera'), 700); }
+        // Переподключаем видео если активно
+        if (isSharingScreen && localScreenStream) {
+            closeAllVideoCalls();
+            setTimeout(() => broadcastVideo(localScreenStream, 'screen'), 500);
+        }
+        if (isSharingCamera && localCameraStream) {
+            closeAllVideoCalls();
+            setTimeout(() => broadcastVideo(localCameraStream, 'camera'), 700);
+        }
+        
         updatePeersUI();
     }
 
-    // ============ PeerJS ============
+    // ============ PeerJS инициализация ============
     function initPeer(myId, hostId = null) {
-        if (peer) peer.destroy();
-        debug('Init Peer: ' + myId.substring(0,16));
+        if (peer) {
+            peer.destroy();
+        }
+        
+        debug('Инициализация PeerJS: ' + myId.substring(0, 16));
+        logToHistory('system', 'Инициализация PeerJS');
         
         peer = new Peer(myId, {
             config: {
@@ -817,145 +1406,363 @@
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
                     { urls: 'stun:stun2.l.google.com:19302' },
-                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-                    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
                 ],
                 iceCandidatePoolSize: 2
             }
         });
         
-        peer.on('open', async id => {
+        peer.on('open', async (id) => {
             myPeerId = id;
             myAvatar = getAvatar(id);
             statusDisplay.innerText = '🟢 Онлайн';
+            debug('Peer открыт: ' + id.substring(0, 16));
+            logToHistory('system', 'Peer открыт, ID: ' + id.substring(0, 16));
             updatePeersUI();
+            
+            // Получаем микрофон
             await getMicrophone();
             
+            // Восстанавливаем историю если хост
+            if (amIHost && currentRoomName && !historyRestored) {
+                restoreHistoryToChat(currentRoomName);
+                historyRestored = true;
+                updateHistoryInfo(currentRoomName);
+            }
+            
+            // Если гость — подключаемся к хосту
             if (!amIHost && hostId) {
                 hostPeerId = hostId;
-                statusDisplay.innerText = '🔗 Подключение...';
-                const conn = peer.connect(hostId, { reliable: true });
+                statusDisplay.innerText = '🔗 Подключение к хосту...';
+                debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
+                logToHistory('system', 'Подключение к хосту: ' + hostId.substring(0, 16));
+                
+                const conn = peer.connect(hostId, {
+                    reliable: true
+                });
                 setupDataConnection(conn);
-                // Гость НЕ звонит хосту — хост сам позвонит
-                debug('Гость ждёт звонка от хоста');
+                
+                // Гость НЕ звонит сам — ждёт звонка от хоста
+                debug('Гость ожидает звонка от хоста');
             }
         });
         
-        peer.on('connection', conn => {
-            debug('Входящее: ' + conn.peer.substring(0,16));
+        // Входящие соединения (для хоста)
+        peer.on('connection', (conn) => {
+            debug('Входящее соединение: ' + conn.peer.substring(0, 16));
+            logToHistory('system', 'Входящее соединение от: ' + conn.peer.substring(0, 16));
             setupDataConnection(conn);
             
-            // Хост ВСЕГДА звонит гостю (решает проблему телефон->ПК)
+            // Хост ВСЕГДА звонит гостю для аудио
             if (amIHost) {
                 setTimeout(() => {
                     const hasAudioCall = mediaCalls.some(c => c.peer === conn.peer);
                     if (!hasAudioCall && localAudioStream) {
-                        debug('Хост звонит гостю: ' + conn.peer.substring(0,16));
+                        debug('Хост звонит гостю: ' + conn.peer.substring(0, 16));
                         callPeerAudio(conn.peer);
                     }
                 }, 1500);
             }
         });
         
-        peer.on('call', call => {
-            debug('Входящий звонок: ' + call.peer.substring(0,16));
+        // Входящие звонки
+        peer.on('call', (call) => {
+            debug('Входящий звонок от: ' + call.peer.substring(0, 16));
             
             // Всегда отвечаем с аудио если есть
-            if (localAudioStream) call.answer(localAudioStream);
-            else call.answer();
+            if (localAudioStream) {
+                call.answer(localAudioStream);
+            } else {
+                call.answer();
+            }
             
-            call.on('stream', remoteStream => {
+            // Определяем тип звонка по стриму
+            call.on('stream', (remoteStream) => {
                 if (remoteStream.getVideoTracks().length > 0) {
-                    // Видео (камера или экран)
-                    const label = remoteStream.getVideoTracks()[0].label || '';
-                    const videoType = (label.includes('camera') || label.includes('front') || label.includes('back')) ? 'camera' : 'screen';
+                    // Это видео (камера или экран)
+                    const videoTrack = remoteStream.getVideoTracks()[0];
+                    const label = videoTrack.label || '';
+                    
+                    let videoType = 'screen';
+                    if (label.toLowerCase().includes('camera') || 
+                        label.toLowerCase().includes('front') || 
+                        label.toLowerCase().includes('back') ||
+                        label.toLowerCase().includes('камера')) {
+                        videoType = 'camera';
+                    }
+                    
                     receiveVideoStream(remoteStream, call.peer, videoType);
                     setupVideoCall(call, call.peer, videoType);
                 } else {
-                    // Аудио
+                    // Это аудио-звонок
                     setupMediaCall(call);
                 }
             });
         });
         
-        peer.on('error', err => {
-            debug('Peer error: ' + err.type);
-            if (err.type === 'peer-unavailable') { statusDisplay.innerText = '❌ Комната не найдена'; addMessage('⚠️ Хост не в сети.', 'system'); }
-            else if (err.type === 'disconnected') { statusDisplay.innerText = '🔴 Соединение потеряно'; }
-            else statusDisplay.innerText = '❌ ' + err.type;
+        // Ошибки
+        peer.on('error', (err) => {
+            console.error('PeerJS error:', err);
+            const errMsg = 'Ошибка PeerJS: ' + err.type + ' - ' + (err.message || '');
+            debug(errMsg);
+            
+            if (err.type === 'peer-unavailable') {
+                statusDisplay.innerText = '❌ Комната не найдена';
+                addErrorMessage('⚠️ Хост не в сети. Проверьте название комнаты.');
+            } else if (err.type === 'disconnected') {
+                statusDisplay.innerText = '🔴 Соединение потеряно';
+                addErrorMessage('🔴 Соединение с сигнальным сервером потеряно.');
+            } else {
+                statusDisplay.innerText = '❌ Ошибка: ' + err.type;
+                addErrorMessage('❌ ' + errMsg);
+            }
+            
+            logToHistory('error', errMsg);
         });
         
+        // Отключение от сигнального сервера
         peer.on('disconnected', () => {
-            statusDisplay.innerText = '🔴 Отключён';
-            addMessage('🔴 Сигнальный сервер недоступен. Перезайдите.', 'system');
+            statusDisplay.innerText = '🔴 Отключён от сервера';
+            const msg = 'Отключён от сигнального сервера. Нажмите "Покинуть комнату" и зайдите заново.';
+            addErrorMessage('🔴 ' + msg);
+            debug(msg);
+            logToHistory('error', msg);
         });
     }
 
-    // ============ Старт / Выход ============
-    async function startSession(role, mega) {
-        const name = roomInput.value.trim();
-        if (!name) return alert('Введите название комнаты!');
-        isMegaRoom = mega;
+    // ============ Старт сессии ============
+    async function startSession(role, megaMode) {
+        const roomName = roomInput.value.trim();
+        if (!roomName) {
+            alert('Введите название комнаты!');
+            return;
+        }
+        
+        isMegaRoom = megaMode;
         amIHost = (role === 'host');
         hostPeerId = null;
-        loginOverlay.style.display = 'none';
-        roomDisplay.innerText = name + (mega ? ' 🔥MEGA' : '');
-        statusDisplay.innerText = '⏳ Инициализация...';
-        chatWindow.innerHTML = '';
-        addMessage('⏳ Подготовка...', 'system');
+        currentRoomName = roomName;
+        historyRestored = false;
         
-        const rnd = Math.random().toString(36).substring(2,6);
-        let myId, targetHost = null;
+        // Скрываем оверлей логина
+        loginOverlay.style.display = 'none';
+        roomDisplay.innerText = roomName + (isMegaRoom ? ' 🔥MEGA' : '');
+        statusDisplay.innerText = '⏳ Инициализация...';
+        
+        // Очищаем чат
+        chatWindow.innerHTML = '';
+        addSystemMessage('⏳ Подготовка комнаты...');
+        
+        // Генерируем ID
+        const randomId = Math.random().toString(36).substring(2, 6);
+        let myId = '';
+        let targetHostId = null;
+        
         if (amIHost) {
-            myId = await hashRoomName(name, 'host');
+            myId = await hashRoomName(roomName, 'host');
+            statusDisplay.innerText = '🏠 Создаю комнату...';
+            debug('Создание комнаты. ID хоста: ' + myId.substring(0, 16));
         } else {
-            targetHost = await hashRoomName(name, 'host');
-            hostPeerId = targetHost;
-            myId = (await hashRoomName(name, 'guest')) + '_' + rnd;
+            targetHostId = await hashRoomName(roomName, 'host');
+            hostPeerId = targetHostId;
+            myId = (await hashRoomName(roomName, 'guest')) + '_' + randomId;
+            statusDisplay.innerText = '🔍 Ищу комнату...';
+            debug('Поиск комнаты. ID хоста: ' + targetHostId.substring(0, 16));
         }
-        initPeer(myId, targetHost);
+        
+        initPeer(myId, targetHostId);
     }
 
+    // ============ Выход из комнаты ============
     function leaveRoom() {
+        debug('Выход из комнаты...');
+        logToHistory('system', 'Выход из комнаты');
+        
+        // Останавливаем всё
         stopScreenShare();
         stopCameraShare();
-        [mediaCalls, videoCalls].forEach(arr => arr.forEach(c => { try { c.close(); } catch(e) {} }));
-        dataConnections.forEach(c => { try { c.close(); } catch(e) {} });
-        mediaCalls = []; videoCalls = []; dataConnections = [];
-        if (peer) { peer.destroy(); peer = null; }
+        
+        // Закрываем все звонки
+        mediaCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
+        mediaCalls = [];
+        
+        videoCalls.forEach(call => {
+            try { call.close(); } catch(e) {}
+        });
+        videoCalls = [];
+        
+        // Закрываем data соединения
+        dataConnections.forEach(conn => {
+            try { conn.close(); } catch(e) {}
+        });
+        dataConnections = [];
+        
+        // Уничтожаем peer
+        if (peer) {
+            peer.destroy();
+            peer = null;
+        }
+        
+        // Очищаем всё
         audioContainers.innerHTML = '';
-        localAudioStream = localScreenStream = localCameraStream = null;
-        hostPeerId = null; isSharingScreen = isSharingCamera = false;
+        localAudioStream = null;
+        localScreenStream = null;
+        localCameraStream = null;
+        hostPeerId = null;
+        isSharingScreen = false;
+        isSharingCamera = false;
+        
+        // Сбрасываем интерфейс
         screenVideo.srcObject = null;
         screenShareContainer.classList.remove('active');
         screenShareLabel.innerText = '📺 Трансляция';
-        screenShareBtn.classList.remove('active'); screenShareBtn.innerText = '🖥️ Демка экрана';
-        cameraBtn.classList.remove('active'); cameraBtn.innerText = '📱 Включить камеру';
+        screenShareBtn.classList.remove('active');
+        screenShareBtn.innerText = '🖥️ Демка экрана (ПК)';
+        cameraBtn.classList.remove('active');
+        cameraBtn.innerText = '📱 Включить камеру';
         switchCameraBtn.classList.remove('visible');
+        
         updatePeersUI();
-        chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли</div>';
+        chatWindow.innerHTML = '<div class="msg system">💬 Вы вышли из комнаты</div>';
+        
+        // Показываем логин
         loginOverlay.style.display = 'flex';
-        roomDisplay.innerText = '---'; statusDisplay.innerText = 'Ожидание...'; debugInfo.innerText = '';
+        roomDisplay.innerText = '---';
+        statusDisplay.innerText = 'Ожидание...';
+        debugInfo.innerText = '';
+        historyInfo.innerText = '';
+        
+        currentRoomName = '';
+        historyRestored = false;
     }
 
-    // ============ Обработчики ============
-    myVolSlider.oninput = e => { myVolTxt.innerText = e.target.value + '%'; if (gainNode) gainNode.gain.value = e.target.value / 100; };
-    screenShareBtn.onclick = () => isSharingScreen ? stopScreenShare() : startScreenShare();
-    cameraBtn.onclick = () => isSharingCamera ? stopCameraShare() : startCameraShare('user');
-    switchCameraBtn.onclick = switchCamera;
-    stopScreenBtn.onclick = () => { if (isSharingScreen) stopScreenShare(); if (isSharingCamera) stopCameraShare(); };
-    refreshAudioBtn.onclick = refreshAllAudio;
-    leaveBtn.onclick = leaveRoom;
-    document.getElementById('create-room-btn').onclick = () => startSession('host', false);
-    document.getElementById('create-mega-btn').onclick = () => startSession('host', true);
-    document.getElementById('join-room-btn').onclick = () => startSession('guest', false);
-    roomInput.onkeypress = e => { if (e.key === 'Enter') startSession('guest', false); };
+    // ============ Громкость ============
+    myVolSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        myVolTxt.innerText = val + '%';
+        if (gainNode) {
+            gainNode.gain.value = val / 100;
+        }
+    });
 
+    // ============ Обработчики кнопок ============
+    screenShareBtn.addEventListener('click', () => {
+        if (isSharingScreen) {
+            stopScreenShare();
+        } else {
+            startScreenShare();
+        }
+    });
+
+    cameraBtn.addEventListener('click', () => {
+        if (isSharingCamera) {
+            stopCameraShare();
+        } else {
+            startCameraShare('user');
+        }
+    });
+
+    switchCameraBtn.addEventListener('click', switchCamera);
+
+    stopScreenBtn.addEventListener('click', () => {
+        if (isSharingScreen) stopScreenShare();
+        if (isSharingCamera) stopCameraShare();
+    });
+
+    refreshAudioBtn.addEventListener('click', refreshAllAudio);
+
+    clearHistoryBtn.addEventListener('click', () => {
+        if (currentRoomName && confirm('Очистить всю историю чата и логов для этой комнаты?')) {
+            clearRoomHistory(currentRoomName);
+            addSystemMessage('🗑️ История очищена');
+            chatWindow.innerHTML = '';
+            addSystemMessage('🗑️ История очищена. Новые сообщения будут сохраняться.');
+        }
+    });
+
+    leaveBtn.addEventListener('click', leaveRoom);
+
+    createRoomBtn.addEventListener('click', () => startSession('host', false));
+    createMegaBtn.addEventListener('click', () => startSession('host', true));
+    joinRoomBtn.addEventListener('click', () => startSession('guest', false));
+
+    // Enter в поле комнаты
+    roomInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            startSession('guest', false);
+        }
+    });
+
+    // ============ Глобальная разблокировка звука ============
     document.addEventListener('click', () => {
         ensureAudio();
-        audioContainers.querySelectorAll('audio').forEach(a => { if (a.paused && a.srcObject) a.play().catch(()=>{}); });
+        const audios = audioContainers.querySelectorAll('audio');
+        audios.forEach(a => {
+            if (a.paused && a.srcObject) {
+                a.play().catch(() => {});
+            }
+        });
     });
-    document.addEventListener('touchstart', ensureAudio, { once: true });
+
+    document.addEventListener('touchstart', () => {
+        ensureAudio();
+    }, { once: true });
+
+    // ============ Восстановление последней комнаты ============
+    // Если хост был в комнате и перезагрузил страницу
+    window.addEventListener('beforeunload', () => {
+        // Сохраняем информацию о текущей сессии
+        if (currentRoomName && amIHost) {
+            try {
+                sessionStorage.setItem('last_room', currentRoomName);
+                sessionStorage.setItem('last_role', 'host');
+                sessionStorage.setItem('last_mega', isMegaRoom.toString());
+            } catch (e) {}
+        }
+    });
+
+    // Проверяем, была ли активна сессия до перезагрузки
+    (function checkPreviousSession() {
+        try {
+            const lastRoom = sessionStorage.getItem('last_room');
+            const lastRole = sessionStorage.getItem('last_role');
+            const lastMega = sessionStorage.getItem('last_mega');
+            
+            if (lastRoom && lastRole) {
+                // Показываем кнопку быстрого входа
+                const quickJoin = document.createElement('button');
+                quickJoin.style.cssText = 'background:#f9e2af;color:#11111b;margin-top:8px;font-size:0.8em;';
+                quickJoin.innerText = `⚡ Вернуться в "${lastRoom}"`;
+                quickJoin.addEventListener('click', () => {
+                    roomInput.value = lastRoom;
+                    startSession(lastRole, lastMega === 'true');
+                });
+                
+                const loginCard = document.querySelector('.login-card');
+                if (loginCard) {
+                    loginCard.appendChild(quickJoin);
+                }
+                
+                // Очищаем sessionStorage
+                sessionStorage.removeItem('last_room');
+                sessionStorage.removeItem('last_role');
+                sessionStorage.removeItem('last_mega');
+            }
+        } catch (e) {}
+    })();
+
+    console.log('P2P Мега-Комнаты загружены. История сохраняется в localStorage.');
 </script>
 
 </body>
