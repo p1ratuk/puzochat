@@ -1254,7 +1254,7 @@
     }
 
     // ============ Аудио-звонки ============
-    function setupMediaCall(call) {
+    function setupMediaCall(call, initialStream = null) {
         // Удаляем дубликат если есть
         const existingIdx = mediaCalls.findIndex(c => c.peer === call.peer);
         if (existingIdx >= 0) {
@@ -1275,7 +1275,7 @@
         const peerShort = call.peer.substring(0, 8);
         debug('🔊 Аудио-звонок установлен: ' + peerShort);
         
-        call.on('stream', (remoteStream) => {
+        const onStream = (remoteStream) => {
             debug('🔊 Получен аудио-поток от: ' + peerShort);
             audioElem.srcObject = remoteStream;
             
@@ -1291,7 +1291,13 @@
                     addSystemMessage('👆 Коснитесь экрана для включения звука');
                 });
             }
-        });
+        };
+
+        if (initialStream) {
+            onStream(initialStream);
+        }
+        
+        call.on('stream', onStream);
         
         call.on('close', () => {
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
@@ -1481,7 +1487,7 @@
                     receiveVideoStream(remoteStream, call.peer, videoType);
                     setupVideoCall(call, call.peer, videoType);
                 } else {
-                    setupMediaCall(call);
+                    setupMediaCall(call, remoteStream);
                 }
             });
         });
