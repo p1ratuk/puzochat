@@ -752,7 +752,8 @@
 
 <script>
     // ============ КОНФИГУРАЦИЯ ============
-    // Используем несколько TURN серверов для лучшей совместимости
+    // Используем ТОЛЬКО Google STUN серверы для максимальной совместимости
+    // и несколько TURN серверов для обхода NAT
     const ICE_SERVERS = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
@@ -773,16 +774,6 @@
             urls: 'turn:openrelay.metered.ca:443?transport=tcp',
             username: 'openrelayproject',
             credential: 'openrelayproject'
-        },
-        {
-            urls: 'turn:numb.viagenie.ca',
-            username: 'webrtc@live.com',
-            credential: 'muazkh'
-        },
-        {
-            urls: 'turn:relay1.expressturn.com:3478',
-            username: 'efree',
-            credential: 'efree'
         }
     ];
 
@@ -2079,11 +2070,14 @@
 
     // ============ Data Connection ============
     function setupDataConnection(conn) {
+        // Проверяем дубликат
         if (dataConnections.find(c => c.peer === conn.peer)) {
+            debug('Дубликат соединения, закрываем: ' + conn.peer.substring(0, 8));
             try { conn.close(); } catch(e) {}
             return;
         }
         
+        // Проверяем бан
         if (isPeerBanned(conn.peer)) {
             debug('Забаненный пытается подключиться: ' + conn.peer.substring(0, 8));
             try {
@@ -2102,7 +2096,7 @@
         
         const peerShort = conn.peer.substring(0, 8);
         addSystemMessage('🔗 Участник ' + peerShort + '... подключился');
-        debug('Data соединение: ' + peerShort);
+        debug('Новое Data соединение: ' + peerShort);
         logToHistory('system', 'Подключился участник: ' + peerShort);
         
         // Отправляем настройки новому участнику
@@ -2119,10 +2113,10 @@
                         });
                     } catch(e) {}
                 }
-            }, 1000);
+            }, 500);
         }
         
-        // Отправляем видео если активен
+        // Отправляем видео если активно
         if (isSharingScreen && localScreenStream && peer && peer.id) {
             setTimeout(() => {
                 try {
@@ -2163,7 +2157,7 @@
                         }
                     } catch(e) {}
                 }
-            }, 2000);
+            }, 1000);
         }
         
         conn.on('data', (data) => {
@@ -2172,14 +2166,18 @@
             
             switch(data.type) {
                 case 'text':
-                    const bannedWord = checkBanWords(data.text);
-                    if (bannedWord && amIHost && moderationEnabled) {
-                        logModeration(data.from, 'BAN_WORD', bannedWord);
-                        addErrorMessage(`🛡️ [МОДЕРАЦИЯ] Бан-слово от ${data.from.substring(0, 8)}...`, true);
+                    // Проверка бан-слов для входящих сообщений
+                    if (amIHost) {
+                        const bannedWord = checkBanWords(data.text);
+                        if (bannedWord && moderationEnabled) {
+                            logModeration(data.from, 'BAN_WORD', bannedWord);
+                            addErrorMessage(`🛡️ [МОДЕРАЦИЯ] Бан-слово от ${data.from.substring(0, 8)}...`, true);
+                        }
                     }
                     
                     addMessageToChat(data.text, 'friend', data.from || conn.peer, data.time, false, data.id, data.status);
                     
+                    // Подтверждение прочтения
                     if (data.id) {
                         try {
                             conn.send({
@@ -2205,8 +2203,8 @@
                     if (data.messages && Array.isArray(data.messages)) {
                         addSystemMessage('📂 Получена история чата', true);
                         data.messages.forEach(msg => {
-                            if (msg.type === 'system') addSystemMessage(msg.text, true);
-                            else if (msg.from === myPeerId) addMessageToChat(msg.text, 'me', '', msg.time, true, msg.id, msg.status);
+                            if (msg.type === 'system' || msg.msgType === 'system') addSystemMessage(msg.text, true);
+                            else if (msg.from === myPeerId || msg.msgType === 'me') addMessageToChat(msg.text, 'me', '', msg.time, true, msg.id, msg.status);
                             else addMessageToChat(msg.text, 'friend', msg.from || '', msg.time, true, msg.id, msg.status);
                         });
                         addSystemMessage('━━━ 🔽 Новые сообщения 🔽 ━━━', true);
@@ -2307,6 +2305,7 @@
             const peerShort = conn.peer.substring(0, 8);
             dataConnections = dataConnections.filter(c => c.peer !== conn.peer);
             
+            // Закрываем аудио
             const audioCall = mediaCalls.find(c => c.peer === conn.peer);
             if (audioCall) {
                 try { audioCall.close(); } catch(e) {}
@@ -2315,6 +2314,7 @@
                 if (audioElem) audioElem.remove();
             }
             
+            // Закрываем видео
             const videoCall = videoCalls.find(c => c.peer === conn.peer);
             if (videoCall) {
                 try { videoCall.call.close(); } catch(e) {}
@@ -2326,6 +2326,7 @@
             debug('Data соединение закрыто: ' + peerShort);
             logToHistory('system', 'Отключился: ' + peerShort);
             
+            // Очищаем видео если нет источников
             if (screenVideo.srcObject && videoCalls.length === 0 && !isSharingScreen && !isSharingCamera) {
                 screenVideo.srcObject = null;
                 screenShareContainer.classList.remove('active');
@@ -2337,12 +2338,13 @@
         });
         
         conn.on('error', (err) => {
-            debug('Ошибка data: ' + err.message);
+            debug('Ошибка data соединения: ' + err.message);
         });
     }
 
     // ============ Аудио-звонки ============
     function setupMediaCall(call) {
+        // Удаляем старый звонок если есть
         const existingIdx = mediaCalls.findIndex(c => c.peer === call.peer);
         if (existingIdx >= 0) {
             try { mediaCalls[existingIdx].close(); } catch(e) {}
@@ -2367,19 +2369,21 @@
         audioContainers.appendChild(audioElem);
         
         const peerShort = call.peer.substring(0, 8);
-        debug('Аудио-звонок: ' + peerShort);
+        debug('Аудио-звонок установлен: ' + peerShort);
         
         const handleStream = (remoteStream) => {
             if (!remoteStream) return;
             const audioTracks = remoteStream.getAudioTracks();
             if (audioTracks.length === 0) return;
             
+            debug('Получен аудио-поток от: ' + peerShort);
+            
             if (!audioElem.srcObject) {
                 audioElem.srcObject = remoteStream;
                 audioElem.play().then(() => {
                     debug('Аудио играет от: ' + peerShort);
                 }).catch(() => {
-                    debug('Ожидание клика для звука: ' + peerShort);
+                    debug('Ожидание взаимодействия для звука: ' + peerShort);
                 });
             }
         };
@@ -2394,7 +2398,7 @@
         });
         
         call.on('error', (err) => {
-            debug('Ошибка аудио: ' + err.message);
+            debug('Ошибка аудио-звонка: ' + err.message);
             mediaCalls = mediaCalls.filter(c => c.peer !== call.peer);
             audioElem.remove();
             updatePeersUI();
@@ -2403,15 +2407,19 @@
 
     function callPeerAudio(peerId) {
         if (!localAudioStream) {
-            debug('Нет микрофона для звонка');
+            debug('Нет микрофона для звонка к: ' + peerId.substring(0, 8));
             return;
         }
         if (!peer || !peer.id) {
-            debug('Peer не готов');
+            debug('Peer не готов для звонка');
             return;
         }
-        if (isPeerBanned(peerId)) return;
+        if (isPeerBanned(peerId)) {
+            debug('Не звоним забаненному: ' + peerId.substring(0, 8));
+            return;
+        }
         
+        // Закрываем старый звонок если есть
         const oldCall = mediaCalls.find(c => c.peer === peerId);
         if (oldCall) {
             try { oldCall.close(); } catch(e) {}
@@ -2425,31 +2433,34 @@
             const call = peer.call(peerId, localAudioStream);
             setupMediaCall(call);
         } catch(e) {
-            debug('Ошибка звонка: ' + e.message);
+            debug('Ошибка аудио-звонка: ' + e.message);
         }
     }
 
     function refreshAllAudio() {
         debug('Переподключение звука...');
         
+        // Закрываем все аудио-звонки
         mediaCalls.forEach(call => {
             try { call.close(); } catch(e) {}
         });
         mediaCalls = [];
         audioContainers.innerHTML = '';
         
+        // Переподключаем
         if (amIHost) {
             dataConnections.forEach(conn => {
                 if (!isPeerBanned(conn.peer)) {
                     setTimeout(() => callPeerAudio(conn.peer), 500);
                 }
             });
-            addSystemMessage('🔄 Хост переподключает звук...');
+            addSystemMessage('🔄 Хост переподключает звук всем участникам...');
         } else if (hostPeerId && !isPeerBanned(hostPeerId)) {
             setTimeout(() => callPeerAudio(hostPeerId), 500);
             addSystemMessage('🔄 Переподключение звука к хосту...');
         }
         
+        // Переподключаем видео
         if (isSharingScreen && localScreenStream && peer && peer.id) {
             closeAllVideoCalls();
             setTimeout(() => broadcastVideo(localScreenStream, 'screen'), 1000);
@@ -2462,40 +2473,57 @@
         updatePeersUI();
     }
 
-    // ============ PeerJS инициализация (УПРОЩЕННАЯ) ============
+    // ============ PeerJS инициализация (ОПТИМИЗИРОВАННАЯ) ============
     function initPeer(myId, hostId = null) {
+        // Уничтожаем старый peer если есть
         if (peer) {
             try { peer.destroy(); } catch(e) {}
             peer = null;
         }
         
-        debug('Инициализация PeerJS: ' + myId.substring(0, 16) + (hostId ? ' -> хост: ' + hostId.substring(0, 16) : ''));
+        debug('Инициализация PeerJS. Мой ID: ' + myId.substring(0, 16) + 
+              (hostId ? ' Целевой хост: ' + hostId.substring(0, 16) : ''));
         
-        // Упрощенная конфигурация - только STUN
+        // Создаём новый peer
         peer = new Peer(myId, {
             config: {
                 iceServers: ICE_SERVERS,
-                iceCandidatePoolSize: 4,
-                iceTransportPolicy: 'all'
+                iceCandidatePoolSize: 2,
+                iceTransportPolicy: 'all',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
             },
-            debug: 0
+            debug: 0 // Отключаем дебаг PeerJS чтобы не засорять консоль
         });
         
+        // Таймаут на подключение к сигнальному серверу
+        const connectionTimeout = setTimeout(() => {
+            if (peer && !peer.id && !peer.destroyed) {
+                debug('Таймаут подключения к сигнальному серверу');
+                statusDisplay.innerText = '⚠️ Сервер недоступен. Попробуйте позже.';
+                addErrorMessage('⚠️ Не удалось подключиться к сигнальному серверу PeerJS. Проверьте интернет.');
+            }
+        }, 20000);
+        
         peer.on('open', async (id) => {
+            clearTimeout(connectionTimeout);
+            
             myPeerId = id;
             if (!myAvatar) {
                 myAvatar = getUniqueAvatar(id);
             }
             
-            statusDisplay.innerText = '🟢 Онлайн | ID: ' + id.substring(0, 12) + '...';
-            debug('Peer открыт: ' + id.substring(0, 16));
+            statusDisplay.innerText = '🟢 Онлайн | ' + id.substring(0, 10) + '...';
+            debug('PeerJS открыт. ID: ' + id.substring(0, 16));
             updatePeersUI();
             
+            // Получаем микрофон
             if (!localAudioStream) {
                 const hasMic = await getMicrophone();
                 debug(hasMic ? 'Микрофон готов' : 'Без микрофона');
             }
             
+            // === ХОСТ ===
             if (amIHost) {
                 if (bannedPeers.length === 0) bannedPeers = getBanList(currentRoomName);
                 if (banWordsList.length === 0) {
@@ -2511,24 +2539,26 @@
                     updateHistoryInfo(currentRoomName);
                     modPanel.style.display = 'block';
                 }
+                
+                debug('Хост готов принимать подключения');
             }
             
-            // ГОСТЬ подключается к ХОСТУ
+            // === ГОСТЬ ===
             if (!amIHost && hostId) {
                 hostPeerId = hostId;
-                statusDisplay.innerText = '🔗 Подключение к хосту...';
-                debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
+                statusDisplay.innerText = '🔗 Подключаюсь к хосту...';
+                debug('Пытаюсь подключиться к хосту: ' + hostId.substring(0, 16));
                 
-                // Пробуем подключиться несколько раз
-                let connectAttempts = 0;
-                const maxConnectAttempts = 5;
+                // Пробуем подключиться с повторными попытками
+                let attempts = 0;
+                const maxAttempts = 3;
                 
-                function tryConnect() {
-                    connectAttempts++;
-                    debug(`Попытка подключения ${connectAttempts}/${maxConnectAttempts}`);
+                function tryConnectToHost() {
+                    attempts++;
+                    debug(`Попытка ${attempts}/${maxAttempts} подключения к хосту`);
                     
                     if (!peer || !peer.id) {
-                        debug('Peer не готов, отмена');
+                        debug('Peer уничтожен, отмена подключения');
                         return;
                     }
                     
@@ -2537,79 +2567,95 @@
                         serialization: 'json'
                     });
                     
-                    setupDataConnection(conn);
+                    let connected = false;
                     
                     conn.on('open', () => {
-                        debug('✅ Data соединение открыто с хостом!');
-                        connectAttempts = maxConnectAttempts; // Успех
+                        if (connected) return;
+                        connected = true;
+                        debug('✅ Успешное подключение к хосту!');
+                        statusDisplay.innerText = '🟢 Подключен к хосту';
+                        setupDataConnection(conn);
                         
+                        // Звоним хосту с аудио
                         if (localAudioStream) {
                             setTimeout(() => {
-                                debug('📞 ГОСТЬ звонит хосту');
+                                debug('📞 Гость звонит хосту');
                                 callPeerAudio(hostId);
                             }, 1500);
                         }
                     });
                     
                     conn.on('error', (err) => {
-                        debug(`Ошибка подключения (попытка ${connectAttempts}): ${err.message}`);
-                        if (connectAttempts < maxConnectAttempts) {
-                            setTimeout(tryConnect, 2000 * connectAttempts);
-                        } else {
-                            statusDisplay.innerText = '❌ Не удалось подключиться к хосту';
-                            addErrorMessage('❌ Не удалось подключиться к хосту. Проверьте, что хост онлайн.');
+                        debug(`Ошибка подключения (попытка ${attempts}): ${err.message}`);
+                        
+                        if (!connected && attempts < maxAttempts) {
+                            setTimeout(tryConnectToHost, 3000 * attempts);
+                        } else if (!connected) {
+                            statusDisplay.innerText = '❌ Хост недоступен';
+                            addErrorMessage('❌ Не удалось подключиться к хосту. Убедитесь, что хост онлайн и использует то же название комнаты.');
+                            debug('Все попытки подключения исчерпаны');
                         }
                     });
                 }
                 
-                setTimeout(tryConnect, 1000);
+                // Начинаем попытки подключения
+                setTimeout(tryConnectToHost, 1000);
             }
         });
         
-        // ХОСТ принимает входящие соединения
+        // === ВХОДЯЩИЕ СОЕДИНЕНИЯ (для хоста) ===
         peer.on('connection', (conn) => {
             debug('Входящее соединение: ' + conn.peer.substring(0, 16));
             setupDataConnection(conn);
             
-            // Хост звонит гостю
+            // Хост звонит гостю с аудио
             if (amIHost && localAudioStream && !isPeerBanned(conn.peer)) {
                 setTimeout(() => {
                     const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
                     if (!hasAudio && peer && peer.id) {
-                        debug('📞 ХОСТ звонит гостю');
+                        debug('📞 Хост звонит новому гостю');
                         callPeerAudio(conn.peer);
                     }
                 }, 2000);
             }
         });
         
-        // Принимаем входящие звонки
+        // === ВХОДЯЩИЕ ЗВОНКИ ===
         peer.on('call', (call) => {
             if (isPeerBanned(call.peer)) {
+                debug('Отклоняем звонок от забаненного: ' + call.peer.substring(0, 8));
                 try { call.close(); } catch(e) {}
                 return;
             }
             
-            debug('📞 Входящий звонок: ' + call.peer.substring(0, 16));
+            debug('Входящий звонок от: ' + call.peer.substring(0, 16));
             
+            // Отвечаем на звонок
             if (localAudioStream) {
                 try {
                     call.answer(localAudioStream);
                 } catch(e) {
+                    debug('Ошибка ответа с аудио: ' + e.message);
                     try { call.answer(); } catch(e2) {}
                 }
             } else {
                 try { call.answer(); } catch(e) {
+                    debug('Ошибка ответа на звонок: ' + e.message);
                     return;
                 }
             }
             
+            // Обрабатываем поток
             call.on('stream', (remoteStream) => {
-                debug('📞 Получен поток: ' + call.peer.substring(0, 8));
+                debug('Получен поток от: ' + call.peer.substring(0, 8) + 
+                      ' (видео: ' + remoteStream.getVideoTracks().length + 
+                      ', аудио: ' + remoteStream.getAudioTracks().length + ')');
                 
                 if (remoteStream.getVideoTracks().length > 0) {
                     const label = remoteStream.getVideoTracks()[0].label || '';
-                    let videoType = label.toLowerCase().includes('camera') ? 'camera' : 'screen';
+                    let videoType = (label.toLowerCase().includes('camera') || 
+                                    label.toLowerCase().includes('front') || 
+                                    label.toLowerCase().includes('back')) ? 'camera' : 'screen';
                     receiveVideoStream(remoteStream, call.peer, videoType);
                     setupVideoCall(call, call.peer, videoType);
                 } else if (remoteStream.getAudioTracks().length > 0) {
@@ -2622,22 +2668,30 @@
             });
         });
         
+        // === ОШИБКИ ===
         peer.on('error', (err) => {
+            clearTimeout(connectionTimeout);
             console.error('PeerJS error:', err);
             debug('Ошибка PeerJS: ' + err.type + ' - ' + (err.message || ''));
             
             if (err.type === 'peer-unavailable') {
                 statusDisplay.innerText = '❌ Хост не найден';
-                addErrorMessage('⚠️ Хост не в сети. Проверьте название комнаты.');
+                addErrorMessage('⚠️ Хост не в сети или использует другое название комнаты.');
             } else if (err.type === 'unavailable-id') {
                 statusDisplay.innerText = '❌ ID занят';
-                addErrorMessage('⚠️ ID уже используется.');
+                addErrorMessage('⚠️ Этот ID уже используется. Попробуйте другое имя комнаты.');
+            } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+                statusDisplay.innerText = '⚠️ Проблема с сетью';
+                addErrorMessage('⚠️ Проблема с сетью. Проверьте подключение к интернету.');
+            } else if (err.type === 'disconnected') {
+                statusDisplay.innerText = '🔴 Отключён от сервера';
+                addErrorMessage('🔴 Соединение с сигнальным сервером потеряно.');
             }
         });
         
         peer.on('disconnected', () => {
-            statusDisplay.innerText = '🔴 Отключён от сервера';
             debug('Отключён от сигнального сервера');
+            statusDisplay.innerText = '🔴 Отключён от сервера';
         });
     }
 
@@ -2667,7 +2721,7 @@
         });
         
         addSystemMessage(`🛡️ Бан-слова обновлены (${banWordsList.length} слов)`);
-        debug('Бан-слова обновлены');
+        debug('Бан-слова обновлены: ' + banWordsList.join(', '));
     }
 
     function toggleModeration() {
@@ -2682,6 +2736,7 @@
         });
         
         addSystemMessage(`🛡️ Модерация ${moderationEnabled ? 'включена' : 'выключена'}`);
+        logToHistory('system', 'Модерация ' + (moderationEnabled ? 'включена' : 'выключена'));
     }
 
     // ============ Старт сессии ============
@@ -2692,7 +2747,7 @@
             return;
         }
         
-        // Очистка
+        // Очистка предыдущего состояния
         if (peer) {
             try { peer.destroy(); } catch(e) {}
             peer = null;
@@ -2725,26 +2780,26 @@
             modPanel.style.display = 'none';
         }
         
-        const randomId = Math.random().toString(36).substring(2, 8);
+        const randomId = Math.random().toString(36).substring(2, 10);
         let myId = '';
         let targetHostId = null;
         
         if (amIHost) {
             myId = await hashRoomName(roomName, 'host');
             statusDisplay.innerText = '🏠 Создаю комнату...';
-            debug('Создание комнаты. ID: ' + myId.substring(0, 16));
+            debug('Создание комнаты. ID хоста: ' + myId.substring(0, 16));
         } else {
             targetHostId = await hashRoomName(roomName, 'host');
             hostPeerId = targetHostId;
             myId = (await hashRoomName(roomName, 'guest')) + '_' + randomId;
             statusDisplay.innerText = '🔍 Ищу комнату...';
-            debug('Поиск комнаты. Хост ID: ' + targetHostId.substring(0, 16) + ' Мой ID: ' + myId.substring(0, 16));
+            debug('Поиск комнаты. ID хоста: ' + targetHostId.substring(0, 16) + ' Мой ID: ' + myId.substring(0, 16));
         }
         
         initPeer(myId, targetHostId);
     }
 
-    // ============ Выход ============
+    // ============ Выход из комнаты ============
     function leaveRoom() {
         debug('Выход из комнаты...');
         
@@ -2828,7 +2883,7 @@
         historyRestored = false;
     }
 
-    // ============ Обработчики ============
+    // ============ Обработчики событий ============
     myVolSlider.addEventListener('input', (e) => {
         const val = e.target.value;
         myVolTxt.innerText = val + '%';
@@ -2929,7 +2984,12 @@
 
     loadBlurBind();
 
-    console.log('✅ PuzoChat v4.0 - Упрощенное P2P соединение');
+    console.log('✅ PuzoChat v5.0 - Оптимизированное P2P соединение');
+    console.log('ℹ️ Если гость не может подключиться к хосту:');
+    console.log('   1. Убедитесь что оба используют одинаковое название комнаты');
+    console.log('   2. Проверьте что хост создал комнату первым');
+    console.log('   3. Отключите VPN/прокси если они есть');
+    console.log('   4. Попробуйте перезагрузить страницу');
 </script>
 
 </body>
