@@ -142,6 +142,9 @@
             object-fit: contain;
             border-radius: 8px;
         }
+        #screen-share-container.blurred video {
+            filter: blur(25px);
+        }
         #screen-share-label {
             position: absolute;
             top: 10px;
@@ -1801,6 +1804,25 @@
     document.addEventListener('touchstart', () => {
         ensureAudio();
     }, { once: true });
+
+    // ============ Блюр демки по Ctrl+~ ============
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === '`') {
+            e.preventDefault();
+            
+            const container = document.getElementById('screen-share-container');
+            
+            if (container.classList.contains('active')) {
+                container.classList.toggle('blurred');
+                
+                if (container.classList.contains('blurred')) {
+                    addSystemMessage('🔍 Блюр включен (Ctrl+`)');
+                } else {
+                    addSystemMessage('👁️ Блюр выключен (Ctrl+`)');
+                }
+            }
+        }
+    });
 
     // ============ Восстановление последней комнаты ============
     window.addEventListener('beforeunload', () => {
