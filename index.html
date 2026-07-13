@@ -1444,148 +1444,120 @@
     refreshAudioBtn.addEventListener('click', refreshAllAudio);
 
     // ============ PeerJS инициализация ============
-    function initPeer(myId, hostId = null) {
-        if (peer) {
-            peer.destroy();
+  // ============ PeerJS инициализация (С АВТО-ПЕРЕПОДКЛЮЧЕНИЕМ) ============
+function initPeer(myId, hostId = null) {
+    if (peer) {
+        peer.destroy();
+    }
+    
+    debug('Инициализация PeerJS: ' + myId.substring(0, 16));
+    logToHistory('system', 'Инициализация PeerJS');
+    
+    peer = new Peer(myId, {
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ],
+            iceCandidatePoolSize: 2
+        },
+        // Добавляем пинг для удержания соединения
+        pingInterval: 5000
+    });
+    
+    peer.on('open', async (id) => {
+        myPeerId = id;
+        myAvatar = getAvatar(id);
+        statusDisplay.innerText = '🟢 Онлайн';
+        debug('Peer открыт: ' + id.substring(0, 16));
+        logToHistory('system', 'Peer открыт, ID: ' + id.substring(0, 16));
+        updatePeersUI();
+        
+        await getMicrophone();
+        
+        if (amIHost && currentRoomName && !historyRestored) {
+            restoreHistoryToChat(currentRoomName);
+            historyRestored = true;
+            updateHistoryInfo(currentRoomName);
         }
         
-        debug('Инициализация PeerJS: ' + myId.substring(0, 16));
-        logToHistory('system', 'Инициализация PeerJS');
-        
-        peer = new Peer(myId, {
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
-                ],
-                iceCandidatePoolSize: 2
-            }
-        });
-        
-        peer.on('open', async (id) => {
-            myPeerId = id;
-            myAvatar = getAvatar(id);
-            statusDisplay.innerText = '🟢 Онлайн';
-            debug('Peer открыт: ' + id.substring(0, 16));
-            logToHistory('system', 'Peer открыт, ID: ' + id.substring(0, 16));
-            updatePeersUI();
+        if (!amIHost && hostId) {
+            hostPeerId = hostId;
+            statusDisplay.innerText = '🔗 Подключение к хосту...';
+            debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
+            logToHistory('system', 'Подключение к хосту: ' + hostId.substring(0, 16));
             
-            await getMicrophone();
-            
-            if (amIHost && currentRoomName && !historyRestored) {
-                restoreHistoryToChat(currentRoomName);
-                historyRestored = true;
-                updateHistoryInfo(currentRoomName);
-            }
-            
-            if (!amIHost && hostId) {
-                hostPeerId = hostId;
-                statusDisplay.innerText = '🔗 Подключение к хосту...';
-                debug('Подключаюсь к хосту: ' + hostId.substring(0, 16));
-                logToHistory('system', 'Подключение к хосту: ' + hostId.substring(0, 16));
-                
-                const conn = peer.connect(hostId, {
-                    reliable: true
-                });
-                setupDataConnection(conn);
-                
-                // ГОСТЬ САМ ЗВОНИТ ХОСТУ
-                if (localAudioStream) {
-                    setTimeout(() => {
-                        debug('📞 ГОСТЬ звонит хосту со своим аудио');
-                        callPeerAudio(hostId);
-                    }, 1500);
-                }
-            }
-        });
-        
-        peer.on('connection', (conn) => {
-            debug('Входящее соединение: ' + conn.peer.substring(0, 16));
-            logToHistory('system', 'Входящее соединение от: ' + conn.peer.substring(0, 16));
+            const conn = peer.connect(hostId, {
+                reliable: true
+            });
             setupDataConnection(conn);
             
-            // ХОСТ ТОЖЕ ЗВОНИТ ГОСТЮ
-            if (amIHost && localAudioStream) {
-                setTimeout(() => {
-                    const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
-                    if (!hasAudio) {
-                        debug('📞 ХОСТ звонит гостю');
-                        callPeerAudio(conn.peer);
-                    }
-                }, 2000);
-            }
-        });
-        
-        // ===== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ВХОДЯЩИХ ЗВОНКОВ =====
-        peer.on('call', (call) => {
-            debug('📞 Входящий звонок от: ' + call.peer.substring(0, 16));
-            
-            // ВСЕГДА отвечаем с аудио
+            // ГОСТЬ САМ ЗВОНИТ ХОСТУ
             if (localAudioStream) {
-                call.answer(localAudioStream);
-                debug('📞 Отвечаем с локальным аудио');
-            } else {
-                call.answer();
-                debug('📞 Отвечаем без аудио');
+                setTimeout(() => {
+                    debug('📞 ГОСТЬ звонит хосту со своим аудио');
+                    callPeerAudio(hostId);
+                }, 1500);
             }
-            
-            // Ждём 500мс чтобы PeerJS обработал answer, затем проверяем поток
+        }
+    });
+    
+    peer.on('connection', (conn) => {
+        debug('Входящее соединение: ' + conn.peer.substring(0, 16));
+        logToHistory('system', 'Входящее соединение от: ' + conn.peer.substring(0, 16));
+        setupDataConnection(conn);
+        
+        // ХОСТ ТОЖЕ ЗВОНИТ ГОСТЮ
+        if (amIHost && localAudioStream) {
             setTimeout(() => {
-                let gotStream = false;
-                
-                try {
-                    if (call.peerConnection) {
-                        const remoteStreams = [];
-                        if (call.peerConnection.getRemoteStreams) {
-                            const streams = call.peerConnection.getRemoteStreams();
-                            streams.forEach(s => remoteStreams.push(s));
-                        }
-                        
-                        if (remoteStreams.length > 0) {
-                            gotStream = true;
-                            const remoteStream = remoteStreams[0];
-                            
-                            if (remoteStream.getVideoTracks().length > 0) {
-                                const label = remoteStream.getVideoTracks()[0].label || '';
-                                let videoType = 'screen';
-                                if (label.toLowerCase().includes('camera') || 
-                                    label.toLowerCase().includes('front') || 
-                                    label.toLowerCase().includes('back')) {
-                                    videoType = 'camera';
-                                }
-                                receiveVideoStream(remoteStream, call.peer, videoType);
-                                setupVideoCall(call, call.peer, videoType);
-                            } else if (remoteStream.getAudioTracks().length > 0) {
-                                setupMediaCall(call);
-                                // Вызываем обработку потока вручную
-                                const mediaCall = mediaCalls.find(c => c.peer === call.peer);
-                                if (mediaCall) {
-                                    call.emit('stream', remoteStream);
-                                }
-                            }
-                        }
-                    }
-                } catch(e) {
-                    debug('📞 Ошибка проверки потока: ' + e.message);
+                const hasAudio = mediaCalls.some(c => c.peer === conn.peer);
+                if (!hasAudio) {
+                    debug('📞 ХОСТ звонит гостю');
+                    callPeerAudio(conn.peer);
                 }
-                
-                // Если поток не получен сразу — ждём через событие
-                if (!gotStream) {
-                    debug('📞 Поток ещё не доступен, ждём событие stream для: ' + call.peer.substring(0, 8));
+            }, 2000);
+        }
+    });
+    
+    // ===== ИСПРАВЛЕННЫЙ ОБРАБОТЧИК ВХОДЯЩИХ ЗВОНКОВ =====
+    peer.on('call', (call) => {
+        debug('📞 Входящий звонок от: ' + call.peer.substring(0, 16));
+        
+        // ВСЕГДА отвечаем с аудио
+        if (localAudioStream) {
+            call.answer(localAudioStream);
+            debug('📞 Отвечаем с локальным аудио');
+        } else {
+            call.answer();
+            debug('📞 Отвечаем без аудио');
+        }
+        
+        // Ждём 500мс чтобы PeerJS обработал answer, затем проверяем поток
+        setTimeout(() => {
+            let gotStream = false;
+            
+            try {
+                if (call.peerConnection) {
+                    const remoteStreams = [];
+                    if (call.peerConnection.getRemoteStreams) {
+                        const streams = call.peerConnection.getRemoteStreams();
+                        streams.forEach(s => remoteStreams.push(s));
+                    }
                     
-                    call.on('stream', (remoteStream) => {
-                        debug('📞 Событие stream для: ' + call.peer.substring(0, 8));
+                    if (remoteStreams.length > 0) {
+                        gotStream = true;
+                        const remoteStream = remoteStreams[0];
                         
                         if (remoteStream.getVideoTracks().length > 0) {
                             const label = remoteStream.getVideoTracks()[0].label || '';
@@ -1597,47 +1569,95 @@
                             }
                             receiveVideoStream(remoteStream, call.peer, videoType);
                             setupVideoCall(call, call.peer, videoType);
-                        } else {
+                        } else if (remoteStream.getAudioTracks().length > 0) {
                             setupMediaCall(call);
-                            // Вызываем обработку явно
                             const mediaCall = mediaCalls.find(c => c.peer === call.peer);
                             if (mediaCall) {
                                 call.emit('stream', remoteStream);
                             }
                         }
-                    });
+                    }
                 }
-            }, 500);
-        });
-        
-        peer.on('error', (err) => {
-            console.error('PeerJS error:', err);
-            const errMsg = 'Ошибка PeerJS: ' + err.type + ' - ' + (err.message || '');
-            debug(errMsg);
-            
-            if (err.type === 'peer-unavailable') {
-                statusDisplay.innerText = '❌ Комната не найдена';
-                addErrorMessage('⚠️ Хост не в сети. Проверьте название комнаты.');
-            } else if (err.type === 'disconnected') {
-                statusDisplay.innerText = '🔴 Соединение потеряно';
-                addErrorMessage('🔴 Соединение с сигнальным сервером потеряно.');
-            } else {
-                statusDisplay.innerText = '❌ Ошибка: ' + err.type;
-                addErrorMessage('❌ ' + errMsg);
+            } catch(e) {
+                debug('📞 Ошибка проверки потока: ' + e.message);
             }
             
-            logToHistory('error', errMsg);
-        });
+            if (!gotStream) {
+                debug('📞 Поток ещё не доступен, ждём событие stream для: ' + call.peer.substring(0, 8));
+                
+                call.on('stream', (remoteStream) => {
+                    debug('📞 Событие stream для: ' + call.peer.substring(0, 8));
+                    
+                    if (remoteStream.getVideoTracks().length > 0) {
+                        const label = remoteStream.getVideoTracks()[0].label || '';
+                        let videoType = 'screen';
+                        if (label.toLowerCase().includes('camera') || 
+                            label.toLowerCase().includes('front') || 
+                            label.toLowerCase().includes('back')) {
+                            videoType = 'camera';
+                        }
+                        receiveVideoStream(remoteStream, call.peer, videoType);
+                        setupVideoCall(call, call.peer, videoType);
+                    } else {
+                        setupMediaCall(call);
+                        const mediaCall = mediaCalls.find(c => c.peer === call.peer);
+                        if (mediaCall) {
+                            call.emit('stream', remoteStream);
+                        }
+                    }
+                });
+            }
+        }, 500);
+    });
+    
+    peer.on('error', (err) => {
+        console.error('PeerJS error:', err);
+        const errMsg = 'Ошибка PeerJS: ' + err.type + ' - ' + (err.message || '');
+        debug(errMsg);
         
-        peer.on('disconnected', () => {
-            statusDisplay.innerText = '🔴 Отключён от сервера';
-            const msg = 'Отключён от сигнального сервера. Нажмите "Покинуть комнату" и зайдите заново.';
-            addErrorMessage('🔴 ' + msg);
-            debug(msg);
-            logToHistory('error', msg);
-        });
-    }
-
+        if (err.type === 'peer-unavailable') {
+            statusDisplay.innerText = '❌ Комната не найдена';
+            addErrorMessage('⚠️ Хост не в сети. Проверьте название комнаты.');
+        } else if (err.type === 'disconnected') {
+            statusDisplay.innerText = '🔴 Соединение потеряно';
+            addErrorMessage('🔴 Соединение с сигнальным сервером потеряно.');
+        } else if (err.type === 'network') {
+            statusDisplay.innerText = '🔴 Проблема с сетью';
+            addErrorMessage('🔴 Проблема с сетью. Проверьте интернет.');
+        } else if (err.type === 'server-error') {
+            statusDisplay.innerText = '🔴 Ошибка сервера';
+            addErrorMessage('🔴 Ошибка сигнального сервера.');
+        } else {
+            statusDisplay.innerText = '❌ Ошибка: ' + err.type;
+            addErrorMessage('❌ ' + errMsg);
+        }
+        
+        logToHistory('error', errMsg);
+    });
+    
+    // ===== АВТО-ПЕРЕПОДКЛЮЧЕНИЕ ПРИ ПОТЕРЕ СВЯЗИ =====
+    peer.on('disconnected', () => {
+        statusDisplay.innerText = '🔴 Отключён от сервера';
+        const msg = 'Отключён от сигнального сервера. Пробую переподключиться...';
+        addErrorMessage('🔴 ' + msg);
+        debug(msg);
+        logToHistory('error', msg);
+        
+        // Пробуем переподключиться через 2 секунды
+        setTimeout(() => {
+            if (peer && !peer.destroyed) {
+                debug('🔄 Попытка переподключения к сигнальному серверу...');
+                statusDisplay.innerText = '🔄 Переподключение...';
+                peer.reconnect();
+            }
+        }, 2000);
+    });
+    
+    // Успешное переподключение
+    peer.on('close', () => {
+        debug('Peer закрыт');
+    });
+}
     // ============ Старт сессии ============
     async function startSession(role, megaMode) {
         const roomName = roomInput.value.trim();
